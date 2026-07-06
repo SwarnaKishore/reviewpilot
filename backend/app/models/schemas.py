@@ -10,6 +10,13 @@ class ReviewRequest(BaseModel):
     agents: list[str] = Field(default_factory=lambda: ["security", "performance", "architecture", "testing"])
 
 
+class PlaygroundReviewRequest(BaseModel):
+    language: str = Field(..., examples=["python"])
+    code: str = Field(..., min_length=1)
+    filename: str = "playground-snippet"
+    agents: list[str] = Field(default_factory=lambda: ["security", "performance", "architecture", "testing"])
+
+
 class PullRequestFile(BaseModel):
     filename: str
     status: str

@@ -28,7 +28,7 @@ class MockProvider(ModelProvider):
             finding_by_agent = {
                 "security": (
                     "Validate trust boundaries in changed request handling",
-                    "The diff touches request-facing code. Confirm user-controlled input is authorized and validated before use.",
+                    "The reviewed code touches a changed path. Confirm user-controlled input is authorized and validated before use.",
                     "Add explicit authorization/validation checks and a regression test for the rejected path.",
                     "medium",
                 ),

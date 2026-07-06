@@ -44,7 +44,11 @@ const agents = [
 ];
 
 function App() {
+  const [mode, setMode] = React.useState<"pr" | "playground">("pr");
   const [prUrl, setPrUrl] = React.useState("");
+  const [language, setLanguage] = React.useState("python");
+  const [filename, setFilename] = React.useState("example.py");
+  const [code, setCode] = React.useState("");
   const [selectedAgents, setSelectedAgents] = React.useState(agents.map((agent) => agent.id));
   const [review, setReview] = React.useState<ReviewResult | null>(null);
   const [loading, setLoading] = React.useState(false);
@@ -54,10 +58,15 @@ function App() {
     setLoading(true);
     setError("");
     try {
-      const response = await fetch("http://127.0.0.1:8000/api/reviews", {
+      const endpoint = mode === "pr" ? "/api/reviews" : "/api/playground/reviews";
+      const payload =
+        mode === "pr"
+          ? { pr_url: prUrl, agents: selectedAgents }
+          : { language, filename, code, agents: selectedAgents };
+      const response = await fetch(`http://127.0.0.1:8000${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pr_url: prUrl, agents: selectedAgents }),
+        body: JSON.stringify(payload),
       });
       if (!response.ok) {
         const payload = await response.json();
@@ -94,13 +103,47 @@ function App() {
         </div>
 
         <section className="panel">
-          <label htmlFor="pr-url">GitHub pull request</label>
-          <input
-            id="pr-url"
-            value={prUrl}
-            onChange={(event) => setPrUrl(event.target.value)}
-            placeholder="https://github.com/owner/repo/pull/123"
-          />
+          <div className="tabs" role="tablist" aria-label="Review mode">
+            <button className={mode === "pr" ? "active" : ""} onClick={() => setMode("pr")} type="button">
+              Pull Request
+            </button>
+            <button className={mode === "playground" ? "active" : ""} onClick={() => setMode("playground")} type="button">
+              Playground
+            </button>
+          </div>
+
+          {mode === "pr" ? (
+            <>
+              <label htmlFor="pr-url">GitHub pull request</label>
+              <input
+                id="pr-url"
+                value={prUrl}
+                onChange={(event) => setPrUrl(event.target.value)}
+                placeholder="https://github.com/owner/repo/pull/123"
+              />
+            </>
+          ) : (
+            <div className="playground-form">
+              <div className="field-row">
+                <div>
+                  <label htmlFor="language">Language</label>
+                  <input id="language" value={language} onChange={(event) => setLanguage(event.target.value)} />
+                </div>
+                <div>
+                  <label htmlFor="filename">Filename</label>
+                  <input id="filename" value={filename} onChange={(event) => setFilename(event.target.value)} />
+                </div>
+              </div>
+              <label htmlFor="code">Code</label>
+              <textarea
+                id="code"
+                value={code}
+                onChange={(event) => setCode(event.target.value)}
+                placeholder={"def divide(a, b):\n    return a / b"}
+                spellCheck={false}
+              />
+            </div>
+          )}
           <div className="agent-grid">
             {agents.map((agent) => {
               const Icon = agent.icon;
@@ -123,7 +166,11 @@ function App() {
               );
             })}
           </div>
-          <button className="primary" onClick={runReview} disabled={loading || !prUrl || selectedAgents.length === 0}>
+          <button
+            className="primary"
+            onClick={runReview}
+            disabled={loading || selectedAgents.length === 0 || (mode === "pr" ? !prUrl : !code.trim())}
+          >
             {loading ? "Reviewing..." : "Run Review"}
           </button>
           {error ? <p className="error">{error}</p> : null}
@@ -146,7 +193,7 @@ function App() {
                 <h2>{review.pr.title}</h2>
                 <p>{review.summary}</p>
               </div>
-              <a href={review.pr.html_url} target="_blank" rel="noreferrer">Open PR</a>
+              {review.pr.html_url !== "#" ? <a href={review.pr.html_url} target="_blank" rel="noreferrer">Open PR</a> : null}
             </header>
 
             <div className="run-strip">
@@ -188,8 +235,8 @@ function App() {
           </>
         ) : (
           <section className="empty">
-            <h2>Run a pull request through ReviewPilot</h2>
-            <p>Start with a public GitHub PR URL. Add a token in the backend `.env` when reviewing private repos or higher-volume API usage.</p>
+            <h2>Run code through ReviewPilot</h2>
+            <p>Review a public GitHub pull request or use Playground mode for a fast pasted-code demo.</p>
           </section>
         )}
       </section>

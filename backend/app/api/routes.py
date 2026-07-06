@@ -4,7 +4,14 @@ from fastapi import APIRouter, HTTPException
 
 from app.agents.workflow import run_review
 from app.core.github import fetch_pull_request
-from app.models.schemas import FeedbackRequest, ReviewRequest, ReviewResult
+from app.models.schemas import (
+    FeedbackRequest,
+    PlaygroundReviewRequest,
+    PullRequestContext,
+    PullRequestFile,
+    ReviewRequest,
+    ReviewResult,
+)
 
 router = APIRouter()
 review_store: dict[str, ReviewResult] = {}
@@ -21,6 +28,32 @@ async def create_review(payload: ReviewRequest) -> ReviewResult:
         pr = await fetch_pull_request(payload.pr_url)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    result = await run_review(pr, payload.agents)
+    review_store[result.id] = result
+    return result
+
+
+@router.post("/playground/reviews", response_model=ReviewResult)
+async def create_playground_review(payload: PlaygroundReviewRequest) -> ReviewResult:
+    filename = payload.filename.strip() or "playground-snippet"
+    pr = PullRequestContext(
+        owner="playground",
+        repo=payload.language.strip() or "code",
+        number=0,
+        title=f"Playground review: {filename}",
+        body="Ad hoc code review from pasted source.",
+        author="local",
+        html_url="#",
+        files=[
+            PullRequestFile(
+                filename=filename,
+                status="added",
+                additions=len(payload.code.splitlines()),
+                deletions=0,
+                patch=_code_to_patch(payload.code),
+            )
+        ],
+    )
     result = await run_review(pr, payload.agents)
     review_store[result.id] = result
     return result
@@ -59,3 +92,9 @@ async def metrics() -> dict:
         "avgLatencyMs": round(sum(review.latency_ms for review in review_store.values()) / max(len(review_store), 1)),
         "totalCostUsd": round(sum(review.estimated_cost_usd for review in review_store.values()), 4),
     }
+
+
+def _code_to_patch(code: str) -> str:
+    lines = code.splitlines()
+    header = f"@@ -0,0 +1,{max(len(lines), 1)} @@"
+    return "\n".join([header, *[f"+{line}" for line in lines]])

@@ -13,7 +13,8 @@ body {
 }
 
 button,
-input {
+input,
+textarea {
   font: inherit;
 }
 
@@ -83,6 +84,52 @@ input {
   border-radius: 8px;
   min-height: 44px;
   padding: 0 12px;
+  width: 100%;
+}
+
+.tabs {
+  background: #ece7dc;
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  grid-template-columns: 1fr 1fr;
+  margin-bottom: 18px;
+  padding: 4px;
+}
+
+.tabs button {
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: #59645e;
+  cursor: pointer;
+  min-height: 36px;
+}
+
+.tabs button.active {
+  background: #ffffff;
+  color: #173d32;
+  font-weight: 800;
+}
+
+.playground-form {
+  display: grid;
+  gap: 12px;
+}
+
+.field-row {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 1fr 1fr;
+}
+
+textarea {
+  border: 1px solid #cfc8bb;
+  border-radius: 8px;
+  line-height: 1.45;
+  min-height: 180px;
+  padding: 12px;
+  resize: vertical;
   width: 100%;
 }
 
@@ -317,7 +364,8 @@ input {
   }
 
   .agent-grid,
-  .run-strip {
+  .run-strip,
+  .field-row {
     grid-template-columns: 1fr;
   }
 
