@@ -257,6 +257,92 @@ textarea {
   margin: 4px 0;
 }
 
+.evaluation {
+  border-bottom: 1px solid #d9d4c6;
+  border-top: 1px solid #d9d4c6;
+  margin-bottom: 24px;
+  padding: 20px 0 24px;
+}
+
+.section-heading {
+  align-items: flex-start;
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.section-heading h3 {
+  font-size: 20px;
+  margin-top: 3px;
+}
+
+.section-heading span {
+  color: #66706a;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.eval-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 14px;
+}
+
+.eval-card {
+  background: #fbfaf6;
+  border: 1px solid #d9d4c6;
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  grid-template-columns: 22px 1fr;
+  padding: 14px;
+}
+
+.eval-card svg {
+  color: #3b7b66;
+  grid-row: span 3;
+  margin-top: 2px;
+}
+
+.eval-card span,
+.eval-card small {
+  color: #657069;
+}
+
+.eval-card strong {
+  font-size: 24px;
+  line-height: 1.1;
+}
+
+.agent-table {
+  border: 1px solid #d9d4c6;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.agent-row {
+  align-items: center;
+  background: #ffffff;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1.2fr repeat(5, minmax(70px, 1fr));
+  min-height: 42px;
+  padding: 0 14px;
+}
+
+.agent-row + .agent-row {
+  border-top: 1px solid #e6e0d3;
+}
+
+.agent-row.header {
+  background: #f4f2ec;
+  color: #5f6963;
+  font-size: 13px;
+  font-weight: 800;
+}
+
 .findings {
   display: grid;
   gap: 14px;
@@ -352,8 +438,17 @@ textarea {
     border-right: 0;
   }
 
-  .run-strip {
+  .run-strip,
+  .eval-grid {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .agent-table {
+    overflow-x: auto;
+  }
+
+  .agent-row {
+    min-width: 760px;
   }
 }
 
@@ -364,9 +459,20 @@ textarea {
   }
 
   .agent-grid,
+  .eval-grid,
   .run-strip,
   .field-row {
     grid-template-columns: 1fr;
+  }
+
+  .section-heading {
+    display: block;
+  }
+
+  .section-heading span {
+    display: block;
+    margin-top: 6px;
+    white-space: normal;
   }
 
   .review-header {

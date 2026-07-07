@@ -1,6 +1,19 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-import { Activity, CheckCircle2, Clock, Gauge, GitPullRequest, ShieldCheck, TestTube2, Waypoints, Zap } from "lucide-react";
+import {
+  Activity,
+  BarChart3,
+  CheckCircle2,
+  Clock,
+  Gauge,
+  GitPullRequest,
+  ShieldCheck,
+  Target,
+  TestTube2,
+  Waypoints,
+  XCircle,
+  Zap,
+} from "lucide-react";
 import "./styles.css";
 
 type Finding = {
@@ -34,6 +47,25 @@ type ReviewResult = {
   latency_ms: number;
   estimated_cost_usd: number;
   agent_runs: Array<{ agent: string; model: string; latency_ms: number; findings: Finding[] }>;
+};
+
+type EvaluationSummary = {
+  total: number;
+  accepted: number;
+  rejected: number;
+  ignored: number;
+  reviewed: number;
+  acceptedRate: number;
+  falsePositiveRate: number;
+  costPerAccepted: number;
+  agentMetrics: Array<{
+    agent: string;
+    findings: number;
+    accepted: number;
+    rejected: number;
+    ignored: number;
+    acceptanceRate: number;
+  }>;
 };
 
 const agents = [
@@ -206,6 +238,8 @@ function App() {
               ))}
             </div>
 
+            <EvaluationDashboard review={review} />
+
             <section className="findings">
               {review.final_findings.map((finding) => (
                 <article className="finding" key={finding.id}>
@@ -244,6 +278,61 @@ function App() {
   );
 }
 
+function EvaluationDashboard({ review }: { review: ReviewResult }) {
+  const summary = React.useMemo(() => computeEvaluation(review), [review]);
+
+  return (
+    <section className="evaluation">
+      <div className="section-heading">
+        <div>
+          <p className="eyebrow">Evaluation</p>
+          <h3>Review quality dashboard</h3>
+        </div>
+        <span>{summary.reviewed} of {summary.total} findings scored</span>
+      </div>
+
+      <div className="eval-grid">
+        <EvalCard icon={BarChart3} label="Findings" value={`${summary.total}`} detail={`${summary.reviewed} reviewed`} />
+        <EvalCard icon={CheckCircle2} label="Accepted" value={`${summary.accepted}`} detail={`${summary.acceptedRate}% accepted rate`} />
+        <EvalCard icon={XCircle} label="Rejected" value={`${summary.rejected}`} detail={`${summary.falsePositiveRate}% false positive`} />
+        <EvalCard icon={Target} label="Cost / accepted" value={`$${summary.costPerAccepted.toFixed(4)}`} detail={`$${review.estimated_cost_usd.toFixed(4)} total`} />
+      </div>
+
+      <div className="agent-table">
+        <div className="agent-row header">
+          <span>Agent</span>
+          <span>Findings</span>
+          <span>Accepted</span>
+          <span>Rejected</span>
+          <span>Ignored</span>
+          <span>Acceptance</span>
+        </div>
+        {summary.agentMetrics.map((agent) => (
+          <div className="agent-row" key={agent.agent}>
+            <strong>{agent.agent}</strong>
+            <span>{agent.findings}</span>
+            <span>{agent.accepted}</span>
+            <span>{agent.rejected}</span>
+            <span>{agent.ignored}</span>
+            <span>{agent.acceptanceRate}%</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function EvalCard({ icon: Icon, label, value, detail }: { icon: typeof Activity; label: string; value: string; detail: string }) {
+  return (
+    <div className="eval-card">
+      <Icon size={18} />
+      <span>{label}</span>
+      <strong>{value}</strong>
+      <small>{detail}</small>
+    </div>
+  );
+}
+
 function Metric({ icon: Icon, label, value }: { icon: typeof Activity; label: string; value: string }) {
   return (
     <div className="metric">
@@ -252,6 +341,49 @@ function Metric({ icon: Icon, label, value }: { icon: typeof Activity; label: st
       <strong>{value}</strong>
     </div>
   );
+}
+
+function computeEvaluation(review: ReviewResult): EvaluationSummary {
+  const findings = review.final_findings;
+  const accepted = findings.filter((finding) => finding.status === "accepted").length;
+  const rejected = findings.filter((finding) => finding.status === "rejected").length;
+  const ignored = findings.filter((finding) => finding.status === "ignored").length;
+  const reviewed = accepted + rejected + ignored;
+  const acceptedRate = percent(accepted, accepted + rejected);
+  const falsePositiveRate = percent(rejected, accepted + rejected);
+  const agentMetrics = review.agent_runs.map((run) => {
+    const agentFindings = findings.filter((finding) => finding.agent === run.agent);
+    const agentAccepted = agentFindings.filter((finding) => finding.status === "accepted").length;
+    const agentRejected = agentFindings.filter((finding) => finding.status === "rejected").length;
+    const agentIgnored = agentFindings.filter((finding) => finding.status === "ignored").length;
+    return {
+      agent: run.agent,
+      findings: agentFindings.length,
+      accepted: agentAccepted,
+      rejected: agentRejected,
+      ignored: agentIgnored,
+      acceptanceRate: percent(agentAccepted, agentAccepted + agentRejected),
+    };
+  });
+
+  return {
+    total: findings.length,
+    accepted,
+    rejected,
+    ignored,
+    reviewed,
+    acceptedRate,
+    falsePositiveRate,
+    costPerAccepted: accepted > 0 ? review.estimated_cost_usd / accepted : 0,
+    agentMetrics,
+  };
+}
+
+function percent(numerator: number, denominator: number) {
+  if (denominator === 0) {
+    return 0;
+  }
+  return Math.round((numerator / denominator) * 100);
 }
 
 createRoot(document.getElementById("root")!).render(<App />);
