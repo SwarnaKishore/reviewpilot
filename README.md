@@ -14,6 +14,16 @@ Multi-agent GitHub pull request review companion.
 
 The default backend uses a mock AI provider so the app can run without paid API calls. Add real provider implementations behind `ModelProvider` in `backend/app/agents/providers.py`.
 
+To use Claude Haiku, set:
+
+```env
+AI_PROVIDER=claude
+AI_MODEL=claude-haiku-4-5
+ANTHROPIC_API_KEY=your_key_here
+```
+
+If `AI_PROVIDER=claude` is set without an Anthropic API key, ReviewPilot falls back to the mock provider.
+
 ## Run Locally
 
 Backend:

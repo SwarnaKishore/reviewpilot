@@ -1,11 +1,20 @@
 from __future__ import annotations
 
+import json
 import time
 from abc import ABC, abstractmethod
 from typing import Optional
 
+import httpx
+
 from app.core.config import settings
 from app.models.schemas import Finding, PullRequestContext
+
+
+ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages"
+ANTHROPIC_VERSION = "2023-06-01"
+HAIKU_INPUT_COST_PER_MILLION = 1.0
+HAIKU_OUTPUT_COST_PER_MILLION = 5.0
 
 
 class ModelProvider(ABC):
@@ -75,10 +84,185 @@ class MockProvider(ModelProvider):
         }
 
 
+class ClaudeProvider(ModelProvider):
+    name = settings.ai_model
+
+    async def review(self, agent: str, pr: PullRequestContext) -> tuple[list[Finding], dict]:
+        if not settings.anthropic_api_key:
+            return await MockProvider().review(agent, pr)
+
+        started = time.perf_counter()
+        prompt = _build_review_prompt(agent, pr)
+        async with httpx.AsyncClient(timeout=60) as client:
+            response = await client.post(
+                ANTHROPIC_MESSAGES_URL,
+                headers={
+                    "anthropic-version": ANTHROPIC_VERSION,
+                    "content-type": "application/json",
+                    "x-api-key": settings.anthropic_api_key,
+                },
+                json={
+                    "model": settings.ai_model,
+                    "max_tokens": 1800,
+                    "temperature": 0,
+                    "system": _system_prompt(agent),
+                    "messages": [{"role": "user", "content": prompt}],
+                },
+            )
+            response.raise_for_status()
+
+        payload = response.json()
+        output_text = _content_text(payload)
+        usage = payload.get("usage", {})
+        input_tokens = int(usage.get("input_tokens", 0))
+        output_tokens = int(usage.get("output_tokens", 0))
+        latency_ms = int((time.perf_counter() - started) * 1000)
+        return _parse_findings(agent, output_text, pr), {
+            "latency_ms": latency_ms,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "estimated_cost_usd": _estimate_cost(input_tokens, output_tokens),
+            "model": settings.ai_model,
+        }
+
+
 def get_provider() -> ModelProvider:
-    if settings.ai_provider != "mock":
-        return MockProvider()
+    if settings.ai_provider.lower() in {"claude", "anthropic"}:
+        return ClaudeProvider()
     return MockProvider()
+
+
+def _system_prompt(agent: str) -> str:
+    rubrics = {
+        "security": "Focus only on exploitable security issues: auth, authorization, secrets, injection, unsafe parsing, sensitive logging, and insecure defaults.",
+        "performance": "Focus only on material performance risks: N+1 calls, repeated expensive work, excessive memory use, cache mistakes, and avoidable render or network churn.",
+        "architecture": "Focus only on maintainability and design risks: broken boundaries, misplaced responsibilities, coupling, duplicated business rules, and inconsistent repository patterns.",
+        "testing": "Focus only on missing or weak tests for changed behavior, edge cases, regressions, and integration boundaries.",
+    }
+    return (
+        "You are a precise code review specialist for ReviewPilot. "
+        f"{rubrics.get(agent, rubrics['testing'])} "
+        "Report only actionable findings with concrete evidence from the diff. "
+        "Do not comment on style or speculate. Return valid JSON only."
+    )
+
+
+def _build_review_prompt(agent: str, pr: PullRequestContext) -> str:
+    return f"""
+Review this pull request as the {agent} agent.
+
+PR:
+- repo: {pr.owner}/{pr.repo}
+- number: {pr.number}
+- title: {pr.title}
+- author: {pr.author or "unknown"}
+- body: {_trim(pr.body or "No description", 1600)}
+
+Changed files and patches:
+{_patch_context(pr)}
+
+Return JSON with this exact shape:
+{{
+  "findings": [
+    {{
+      "file": "path/to/file",
+      "line": 123,
+      "severity": "low | medium | high",
+      "category": "{agent}",
+      "title": "short actionable title",
+      "evidence": "specific reason grounded in the diff",
+      "recommendation": "specific fix or test to add"
+    }}
+  ]
+}}
+
+If there are no actionable {agent} findings, return {{"findings": []}}.
+""".strip()
+
+
+def _patch_context(pr: PullRequestContext) -> str:
+    parts: list[str] = []
+    budget = 26000
+    used = 0
+    for item in pr.files:
+        patch = item.patch or ""
+        header = f"\n--- {item.filename} ({item.status}, +{item.additions}/-{item.deletions}) ---\n"
+        remaining = budget - used - len(header)
+        if remaining <= 0:
+            parts.append("\n[Additional files omitted to control review cost.]")
+            break
+        snippet = _trim(patch, min(remaining, 7000))
+        parts.append(f"{header}{snippet}")
+        used += len(header) + len(snippet)
+    return "\n".join(parts) if parts else "No patch content available."
+
+
+def _content_text(payload: dict) -> str:
+    chunks = []
+    for item in payload.get("content", []):
+        if item.get("type") == "text":
+            chunks.append(item.get("text", ""))
+    return "\n".join(chunks).strip()
+
+
+def _parse_findings(agent: str, output_text: str, pr: PullRequestContext) -> list[Finding]:
+    try:
+        data = json.loads(output_text)
+    except json.JSONDecodeError:
+        data = json.loads(_extract_json_object(output_text))
+
+    valid_files = {item.filename for item in pr.files}
+    findings: list[Finding] = []
+    for index, item in enumerate(data.get("findings", []), start=1):
+        file_name = str(item.get("file") or "")
+        if file_name not in valid_files and pr.files:
+            file_name = pr.files[0].filename
+        severity = str(item.get("severity") or "medium").lower()
+        if severity not in {"low", "medium", "high"}:
+            severity = "medium"
+        findings.append(
+            Finding(
+                id=f"{agent}-{file_name}-{index}",
+                agent=agent,
+                file=file_name,
+                line=_optional_int(item.get("line")),
+                severity=severity,
+                category=str(item.get("category") or agent),
+                title=str(item.get("title") or "Review finding"),
+                evidence=str(item.get("evidence") or ""),
+                recommendation=str(item.get("recommendation") or ""),
+            )
+        )
+    return findings
+
+
+def _extract_json_object(text: str) -> str:
+    start = text.find("{")
+    end = text.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        return '{"findings": []}'
+    return text[start : end + 1]
+
+
+def _optional_int(value) -> Optional[int]:
+    try:
+        return int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _estimate_cost(input_tokens: int, output_tokens: int) -> float:
+    return round(
+        (input_tokens / 1_000_000 * HAIKU_INPUT_COST_PER_MILLION)
+        + (output_tokens / 1_000_000 * HAIKU_OUTPUT_COST_PER_MILLION),
+        6,
+    )
+
+
+def _trim(text: str, max_chars: int) -> str:
+    if len(text) <= max_chars:
+        return text
+    return f"{text[:max_chars]}\n[truncated]"
 
 
 def _first_added_line(patch: Optional[str]) -> Optional[int]:
