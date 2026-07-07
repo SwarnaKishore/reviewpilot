@@ -49,6 +49,19 @@ type ReviewResult = {
   agent_runs: Array<{ agent: string; model: string; latency_ms: number; findings: Finding[] }>;
 };
 
+type ReviewSummary = {
+  id: string;
+  title: string;
+  owner: string;
+  repo: string;
+  number: number;
+  risk_level: string;
+  recommendation: string;
+  latency_ms: number;
+  estimated_cost_usd: number;
+  created_at: string;
+};
+
 type EvaluationSummary = {
   total: number;
   accepted: number;
@@ -83,8 +96,26 @@ function App() {
   const [code, setCode] = React.useState("");
   const [selectedAgents, setSelectedAgents] = React.useState(agents.map((agent) => agent.id));
   const [review, setReview] = React.useState<ReviewResult | null>(null);
+  const [history, setHistory] = React.useState<ReviewSummary[]>([]);
   const [loading, setLoading] = React.useState(false);
+  const [historyLoading, setHistoryLoading] = React.useState(false);
   const [error, setError] = React.useState("");
+
+  React.useEffect(() => {
+    loadHistory();
+  }, []);
+
+  async function loadHistory() {
+    setHistoryLoading(true);
+    try {
+      const response = await fetch("http://127.0.0.1:8000/api/reviews");
+      if (response.ok) {
+        setHistory(await response.json());
+      }
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
 
   async function runReview() {
     setLoading(true);
@@ -105,6 +136,7 @@ function App() {
         throw new Error(payload.detail || "Review failed");
       }
       setReview(await response.json());
+      await loadHistory();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Review failed");
     } finally {
@@ -120,7 +152,18 @@ function App() {
     });
     if (response.ok) {
       setReview(await response.json());
+      await loadHistory();
     }
+  }
+
+  async function openReview(reviewId: string) {
+    setError("");
+    const response = await fetch(`http://127.0.0.1:8000/api/reviews/${reviewId}`);
+    if (!response.ok) {
+      setError("Could not load saved review");
+      return;
+    }
+    setReview(await response.json());
   }
 
   return (
@@ -213,6 +256,34 @@ function App() {
           <Metric icon={CheckCircle2} label="Recommendation" value={review?.recommendation ?? "waiting"} />
           <Metric icon={Clock} label="Latency" value={review ? `${review.latency_ms}ms` : "0ms"} />
           <Metric icon={Gauge} label="Cost" value={review ? `$${review.estimated_cost_usd.toFixed(4)}` : "$0"} />
+        </section>
+
+        <section className="panel history-panel">
+          <div className="history-heading">
+            <h2>History</h2>
+            <button onClick={loadHistory} type="button" title="Refresh review history">
+              refresh
+            </button>
+          </div>
+          {historyLoading ? <p className="muted">Loading saved reviews...</p> : null}
+          {!historyLoading && history.length === 0 ? <p className="muted">No saved reviews yet.</p> : null}
+          <div className="history-list">
+            {history.map((item) => (
+              <button
+                className={review?.id === item.id ? "history-item active" : "history-item"}
+                key={item.id}
+                onClick={() => openReview(item.id)}
+                type="button"
+              >
+                <span className={`history-risk ${item.risk_level}`}>{item.risk_level}</span>
+                <strong>{item.title}</strong>
+                <small>
+                  {item.owner}/{item.repo} #{item.number} · {formatDate(item.created_at)}
+                </small>
+                <small>{item.recommendation} · ${item.estimated_cost_usd.toFixed(4)}</small>
+              </button>
+            ))}
+          </div>
         </section>
       </aside>
 
@@ -384,6 +455,14 @@ function percent(numerator: number, denominator: number) {
     return 0;
   }
   return Math.round((numerator / denominator) * 100);
+}
+
+function formatDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return date.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
 createRoot(document.getElementById("root")!).render(<App />);

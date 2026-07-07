@@ -62,7 +62,8 @@ h1 {
 
 .brand p,
 .review-header p,
-.empty p {
+.empty p,
+.muted {
   color: #66706a;
 }
 
@@ -197,6 +198,91 @@ textarea {
 .metric span {
   color: #68716b;
   font-size: 13px;
+}
+
+.history-panel {
+  padding-bottom: 0;
+}
+
+.history-heading {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.history-heading h2 {
+  font-size: 16px;
+}
+
+.history-heading button {
+  background: transparent;
+  border: 0;
+  color: #3b7b66;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.muted {
+  font-size: 13px;
+}
+
+.history-list {
+  display: grid;
+  gap: 8px;
+  max-height: 340px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.history-item {
+  background: #ffffff;
+  border: 1px solid #d9d4c6;
+  border-radius: 8px;
+  color: #25302b;
+  cursor: pointer;
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  text-align: left;
+  width: 100%;
+}
+
+.history-item.active {
+  border-color: #3b7b66;
+  box-shadow: inset 3px 0 0 #3b7b66;
+}
+
+.history-item strong {
+  line-height: 1.25;
+}
+
+.history-item small {
+  color: #68716b;
+  line-height: 1.35;
+}
+
+.history-risk {
+  border-radius: 999px;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 900;
+  justify-self: start;
+  padding: 2px 7px;
+  text-transform: uppercase;
+}
+
+.history-risk.high {
+  background: #9e3328;
+}
+
+.history-risk.medium {
+  background: #b86624;
+}
+
+.history-risk.low {
+  background: #55766b;
 }
 
 .workspace {
