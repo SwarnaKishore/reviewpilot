@@ -24,6 +24,10 @@ class ModelProvider(ABC):
     async def review(self, agent: str, pr: PullRequestContext) -> tuple[list[Finding], dict]:
         raise NotImplementedError
 
+    @abstractmethod
+    async def judge(self, pr: PullRequestContext, findings: list[Finding]) -> tuple[list[Finding], dict]:
+        raise NotImplementedError
+
 
 class MockProvider(ModelProvider):
     name = "mock-reviewer"
@@ -83,6 +87,17 @@ class MockProvider(ModelProvider):
             "model": self.name,
         }
 
+    async def judge(self, pr: PullRequestContext, findings: list[Finding]) -> tuple[list[Finding], dict]:
+        started = time.perf_counter()
+        final_findings = _rule_judge_findings(findings)
+        return final_findings, {
+            "latency_ms": int((time.perf_counter() - started) * 1000),
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "estimated_cost_usd": 0,
+            "model": self.name,
+        }
+
 
 class ClaudeProvider(ModelProvider):
     name = settings.ai_model
@@ -118,6 +133,47 @@ class ClaudeProvider(ModelProvider):
         output_tokens = int(usage.get("output_tokens", 0))
         latency_ms = int((time.perf_counter() - started) * 1000)
         return _parse_findings(agent, output_text, pr), {
+            "latency_ms": latency_ms,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "estimated_cost_usd": _estimate_cost(input_tokens, output_tokens),
+            "model": settings.ai_model,
+        }
+
+    async def judge(self, pr: PullRequestContext, findings: list[Finding]) -> tuple[list[Finding], dict]:
+        if not settings.anthropic_api_key or not findings:
+            return await MockProvider().judge(pr, findings)
+
+        started = time.perf_counter()
+        prompt = _build_judge_prompt(pr, findings)
+        async with httpx.AsyncClient(timeout=60) as client:
+            response = await client.post(
+                ANTHROPIC_MESSAGES_URL,
+                headers={
+                    "anthropic-version": ANTHROPIC_VERSION,
+                    "content-type": "application/json",
+                    "x-api-key": settings.anthropic_api_key,
+                },
+                json={
+                    "model": settings.ai_model,
+                    "max_tokens": 2200,
+                    "temperature": 0,
+                    "system": (
+                        "You are ReviewPilot's final Judge agent. Keep only actionable code review findings "
+                        "with concrete diff evidence. Merge duplicates, reject speculation, and calibrate severity. "
+                        "Return valid JSON only."
+                    ),
+                    "messages": [{"role": "user", "content": prompt}],
+                },
+            )
+            response.raise_for_status()
+
+        payload = response.json()
+        usage = payload.get("usage", {})
+        input_tokens = int(usage.get("input_tokens", 0))
+        output_tokens = int(usage.get("output_tokens", 0))
+        latency_ms = int((time.perf_counter() - started) * 1000)
+        return _parse_judge_findings(_content_text(payload), findings), {
             "latency_ms": latency_ms,
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
@@ -180,6 +236,44 @@ If there are no actionable {agent} findings, return {{"findings": []}}.
 """.strip()
 
 
+def _build_judge_prompt(pr: PullRequestContext, findings: list[Finding]) -> str:
+    return f"""
+ReviewPilot specialist agents produced these candidate findings.
+
+PR:
+- repo: {pr.owner}/{pr.repo}
+- number: {pr.number}
+- title: {pr.title}
+
+Changed files and patches:
+{_patch_context(pr)}
+
+Candidate findings:
+{_findings_context(findings)}
+
+Return JSON with this exact shape:
+{{
+  "final_findings": [
+    {{
+      "source_id": "existing finding id",
+      "severity": "low | medium | high",
+      "title": "deduplicated title",
+      "evidence": "specific reason grounded in the diff",
+      "recommendation": "specific fix or test to add"
+    }}
+  ]
+}}
+
+Rules:
+- Keep a finding only if it is actionable and supported by the patch.
+- Merge duplicates by choosing one source_id and improving title/evidence/recommendation.
+- Reject vague maintainability or performance claims without concrete evidence.
+- Do not invent files or lines.
+- Preserve the original source_id whenever possible.
+- Return {{"final_findings": []}} if no findings are strong enough.
+""".strip()
+
+
 def _patch_context(pr: PullRequestContext) -> str:
     parts: list[str] = []
     budget = 26000
@@ -195,6 +289,27 @@ def _patch_context(pr: PullRequestContext) -> str:
         parts.append(f"{header}{snippet}")
         used += len(header) + len(snippet)
     return "\n".join(parts) if parts else "No patch content available."
+
+
+def _findings_context(findings: list[Finding]) -> str:
+    rows = []
+    for finding in findings:
+        rows.append(
+            json.dumps(
+                {
+                    "id": finding.id,
+                    "agent": finding.agent,
+                    "file": finding.file,
+                    "line": finding.line,
+                    "severity": finding.severity,
+                    "category": finding.category,
+                    "title": finding.title,
+                    "evidence": finding.evidence,
+                    "recommendation": finding.recommendation,
+                }
+            )
+        )
+    return "\n".join(rows)
 
 
 def _content_text(payload: dict) -> str:
@@ -234,6 +349,57 @@ def _parse_findings(agent: str, output_text: str, pr: PullRequestContext) -> lis
             )
         )
     return findings
+
+
+def _parse_judge_findings(output_text: str, candidate_findings: list[Finding]) -> list[Finding]:
+    try:
+        data = json.loads(output_text)
+    except json.JSONDecodeError:
+        try:
+            data = json.loads(_extract_json_object(output_text))
+        except json.JSONDecodeError:
+            return _rule_judge_findings(candidate_findings)
+
+    if "final_findings" not in data:
+        return _rule_judge_findings(candidate_findings)
+
+    by_id = {finding.id: finding for finding in candidate_findings}
+    final_findings: list[Finding] = []
+    seen_ids: set[str] = set()
+    for item in data.get("final_findings", []):
+        source_id = str(item.get("source_id") or "")
+        source = by_id.get(source_id)
+        if not source or source.id in seen_ids:
+            continue
+        seen_ids.add(source.id)
+        severity = str(item.get("severity") or source.severity).lower()
+        if severity not in {"low", "medium", "high"}:
+            severity = source.severity
+        final_findings.append(
+            source.model_copy(
+                update={
+                    "severity": severity,
+                    "title": str(item.get("title") or source.title),
+                    "evidence": str(item.get("evidence") or source.evidence),
+                    "recommendation": str(item.get("recommendation") or source.recommendation),
+                }
+            )
+        )
+
+    return final_findings
+
+
+def _rule_judge_findings(findings: list[Finding]) -> list[Finding]:
+    seen: set[tuple[str, Optional[int], str]] = set()
+    accepted: list[Finding] = []
+    for finding in findings:
+        key = (finding.file, finding.line, finding.category)
+        if key in seen:
+            continue
+        seen.add(key)
+        if finding.evidence and finding.recommendation:
+            accepted.append(finding)
+    return accepted
 
 
 def _extract_json_object(text: str) -> str:

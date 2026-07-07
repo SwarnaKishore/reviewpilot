@@ -61,6 +61,17 @@ Playground mode:
 - Pick a language and filename.
 - Run the same agent workflow without needing GitHub auth.
 
+## Judge Agent
+
+When `AI_PROVIDER=claude` is enabled, ReviewPilot runs a Claude-powered Judge after the specialist agents. The Judge:
+
+- removes speculative findings
+- merges duplicates
+- recalibrates severity
+- keeps only findings with concrete diff evidence
+
+When Claude is not configured, ReviewPilot falls back to a deterministic rule-based Judge.
+
 ## Environment
 
 `GITHUB_TOKEN` is optional for public PRs, but recommended for higher rate limits and private repos.

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 import uuid
-from typing import Optional, TypedDict
+from typing import TypedDict
 
 from app.agents.providers import get_provider
 from app.models.schemas import AgentRun, Finding, PullRequestContext, ReviewResult
@@ -17,6 +17,7 @@ class ReviewState(TypedDict):
     selected_agents: list[str]
     agent_runs: list[AgentRun]
     final_findings: list[Finding]
+    judge_estimated_cost_usd: float
 
 
 async def run_review(pr: PullRequestContext, agents: list[str]) -> ReviewResult:
@@ -29,6 +30,7 @@ async def run_review(pr: PullRequestContext, agents: list[str]) -> ReviewResult:
             "selected_agents": [agent for agent in agents if agent in SPECIALIST_AGENTS],
             "agent_runs": [],
             "final_findings": [],
+            "judge_estimated_cost_usd": 0,
         }
     )
     agent_runs = state["agent_runs"]
@@ -43,7 +45,10 @@ async def run_review(pr: PullRequestContext, agents: list[str]) -> ReviewResult:
         agent_runs=agent_runs,
         final_findings=final_findings,
         latency_ms=int((time.perf_counter() - started) * 1000),
-        estimated_cost_usd=round(sum(run.estimated_cost_usd for run in agent_runs), 4),
+        estimated_cost_usd=round(
+            sum(run.estimated_cost_usd for run in agent_runs) + state["judge_estimated_cost_usd"],
+            4,
+        ),
     )
 
 
@@ -52,7 +57,7 @@ def _build_review_graph(provider):
 
     for agent in SPECIALIST_AGENTS:
         graph.add_node(agent, _agent_node(provider, agent))
-    graph.add_node("judge", _judge_node)
+    graph.add_node("judge", _judge_node(provider))
 
     graph.add_edge(START, SPECIALIST_AGENTS[0])
     for current_agent, next_agent in zip(SPECIALIST_AGENTS, SPECIALIST_AGENTS[1:]):
@@ -86,22 +91,17 @@ def _agent_node(provider, agent: str):
     return node
 
 
-def _judge_node(state: ReviewState) -> ReviewState:
-    all_findings = [finding for run in state["agent_runs"] for finding in run.findings]
-    return {**state, "final_findings": judge_findings(all_findings)}
+def _judge_node(provider):
+    async def node(state: ReviewState) -> ReviewState:
+        all_findings = [finding for run in state["agent_runs"] for finding in run.findings]
+        final_findings, meta = await provider.judge(state["pr"], all_findings)
+        return {
+            **state,
+            "final_findings": final_findings,
+            "judge_estimated_cost_usd": meta["estimated_cost_usd"],
+        }
 
-
-def judge_findings(findings: list[Finding]) -> list[Finding]:
-    seen: set[tuple[str, Optional[int], str]] = set()
-    accepted: list[Finding] = []
-    for finding in findings:
-        key = (finding.file, finding.line, finding.category)
-        if key in seen:
-            continue
-        seen.add(key)
-        if finding.evidence and finding.recommendation:
-            accepted.append(finding)
-    return accepted
+    return node
 
 
 def _risk_level(findings: list[Finding]) -> str:
