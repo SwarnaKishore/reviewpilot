@@ -72,6 +72,16 @@ When `AI_PROVIDER=claude` is enabled, ReviewPilot runs a Claude-powered Judge af
 
 When Claude is not configured, ReviewPilot falls back to a deterministic rule-based Judge.
 
+## Local Persistence
+
+ReviewPilot stores local review history in SQLite by default:
+
+```env
+DATABASE_URL=sqlite:///./reviewpilot.db
+```
+
+Saved reviews, findings, and feedback survive backend restarts. The database file is ignored by git.
+
 ## Environment
 
 `GITHUB_TOKEN` is optional for public PRs, but recommended for higher rate limits and private repos.

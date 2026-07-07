@@ -5,6 +5,8 @@ __pycache__/
 *.py[cod]
 .venv/
 .env
+reviewpilot.db
+work/
 
 # Node
 node_modules/

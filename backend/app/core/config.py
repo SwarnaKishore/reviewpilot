@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     qwen_api_key: Optional[str] = None
     ai_provider: str = "mock"
     ai_model: str = "claude-haiku-4-5"
+    database_url: str = "sqlite:///./reviewpilot.db"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

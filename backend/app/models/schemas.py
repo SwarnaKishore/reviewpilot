@@ -71,5 +71,18 @@ class ReviewResult(BaseModel):
     estimated_cost_usd: float
 
 
+class ReviewSummary(BaseModel):
+    id: str
+    title: str
+    owner: str
+    repo: str
+    number: int
+    risk_level: str
+    recommendation: str
+    latency_ms: int
+    estimated_cost_usd: float
+    created_at: str
+
+
 class FeedbackRequest(BaseModel):
     status: str
