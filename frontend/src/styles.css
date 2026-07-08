@@ -14,6 +14,7 @@ body {
 
 button,
 input,
+select,
 textarea {
   font: inherit;
 }
@@ -80,7 +81,9 @@ label {
   margin-bottom: 8px;
 }
 
-input {
+input,
+select {
+  background: #ffffff;
   border: 1px solid #cfc8bb;
   border-radius: 8px;
   min-height: 44px;
@@ -122,6 +125,31 @@ input {
   display: grid;
   gap: 10px;
   grid-template-columns: 1fr 1fr;
+}
+
+.code-heading {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.code-heading label {
+  margin-bottom: 0;
+}
+
+.code-heading button {
+  background: transparent;
+  border: 0;
+  color: #3b7b66;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 0;
+}
+
+.code-heading button:disabled {
+  color: #929990;
+  cursor: not-allowed;
 }
 
 textarea {

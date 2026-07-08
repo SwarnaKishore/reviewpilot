@@ -81,6 +81,13 @@ type EvaluationSummary = {
   }>;
 };
 
+type LanguageOption = {
+  id: string;
+  label: string;
+  filename: string;
+  sample: string;
+};
+
 const agents = [
   { id: "security", label: "Security", icon: ShieldCheck },
   { id: "performance", label: "Performance", icon: Zap },
@@ -88,11 +95,132 @@ const agents = [
   { id: "testing", label: "Testing", icon: TestTube2 },
 ];
 
+const languageOptions: LanguageOption[] = [
+  {
+    id: "python",
+    label: "Python",
+    filename: "auth.py",
+    sample: `def get_user_profile(request, db):
+    user_id = request.json.get("user_id")
+    query = f"SELECT * FROM users WHERE id = {user_id}"
+    user = db.execute(query).fetchone()
+
+    if request.json.get("include_token"):
+        print("User token:", user["api_token"])
+
+    return {
+        "id": user["id"],
+        "email": user["email"],
+        "api_token": user["api_token"]
+    }`,
+  },
+  {
+    id: "typescript",
+    label: "TypeScript",
+    filename: "auth.ts",
+    sample: `import express from "express";
+
+app.get("/users/:id", async (req, res) => {
+  const query = \`SELECT * FROM users WHERE id = \${req.params.id}\`;
+  const user = await db.query(query);
+
+  if (req.query.debug) {
+    console.log("token", user.rows[0].apiToken);
+  }
+
+  res.json({
+    id: user.rows[0].id,
+    email: user.rows[0].email,
+    apiToken: user.rows[0].apiToken
+  });
+});`,
+  },
+  {
+    id: "javascript",
+    label: "JavaScript",
+    filename: "auth.js",
+    sample: `app.post("/transfer", async (req, res) => {
+  const accountId = req.body.accountId;
+  const amount = req.body.amount;
+  const sql = "UPDATE accounts SET balance = balance - " + amount + " WHERE id = " + accountId;
+
+  console.log("session", req.headers.authorization);
+  await db.query(sql);
+
+  res.json({ ok: true });
+});`,
+  },
+  {
+    id: "java",
+    label: "Java",
+    filename: "UserController.java",
+    sample: `public UserDto getUserProfile(HttpServletRequest request) throws SQLException {
+    String userId = request.getParameter("userId");
+    String sql = "SELECT * FROM users WHERE id = " + userId;
+    ResultSet rs = connection.createStatement().executeQuery(sql);
+    rs.next();
+
+    System.out.println("token=" + rs.getString("api_token"));
+    return new UserDto(rs.getInt("id"), rs.getString("email"), rs.getString("api_token"));
+}`,
+  },
+  {
+    id: "csharp",
+    label: "C#",
+    filename: "UserController.cs",
+    sample: `public IActionResult GetProfile(string userId, bool debug)
+{
+    var sql = $"SELECT * FROM Users WHERE Id = {userId}";
+    var user = _db.Users.FromSqlRaw(sql).First();
+
+    if (debug)
+    {
+        Console.WriteLine($"token={user.ApiToken}");
+    }
+
+    return Ok(new { user.Id, user.Email, user.ApiToken });
+}`,
+  },
+  {
+    id: "go",
+    label: "Go",
+    filename: "handler.go",
+    sample: `func GetProfile(w http.ResponseWriter, r *http.Request) {
+    userID := r.URL.Query().Get("user_id")
+    query := "SELECT * FROM users WHERE id = " + userID
+    row := db.QueryRow(query)
+
+    var user User
+    row.Scan(&user.ID, &user.Email, &user.APIToken)
+    log.Println("token", user.APIToken)
+    json.NewEncoder(w).Encode(user)
+}`,
+  },
+  {
+    id: "sql",
+    label: "SQL",
+    filename: "migration.sql",
+    sample: `CREATE TABLE user_exports AS
+SELECT id, email, password_hash, api_token
+FROM users;
+
+GRANT SELECT ON user_exports TO public;
+
+CREATE INDEX users_email_idx ON users(email);`,
+  },
+  {
+    id: "other",
+    label: "Other",
+    filename: "snippet.txt",
+    sample: "",
+  },
+];
+
 function App() {
   const [mode, setMode] = React.useState<"pr" | "playground">("pr");
   const [prUrl, setPrUrl] = React.useState("");
-  const [language, setLanguage] = React.useState("python");
-  const [filename, setFilename] = React.useState("example.py");
+  const [language, setLanguage] = React.useState(languageOptions[0].id);
+  const [filename, setFilename] = React.useState(languageOptions[0].filename);
   const [code, setCode] = React.useState("");
   const [selectedAgents, setSelectedAgents] = React.useState(agents.map((agent) => agent.id));
   const [review, setReview] = React.useState<ReviewResult | null>(null);
@@ -107,6 +235,14 @@ function App() {
   React.useEffect(() => {
     loadHistory();
   }, []);
+
+  React.useEffect(() => {
+    if (mode === "playground" && !code.trim()) {
+      const option = languageOptions.find((item) => item.id === language);
+      setCode(option?.sample ?? "");
+      setFilename(option?.filename ?? filename);
+    }
+  }, [mode]);
 
   async function loadHistory() {
     setHistoryLoading(true);
@@ -198,6 +334,21 @@ function App() {
     }
   }
 
+  function changeLanguage(languageId: string) {
+    const option = languageOptions.find((item) => item.id === languageId) ?? languageOptions[0];
+    setLanguage(option.id);
+    setFilename(option.filename);
+    if (!code.trim() || language !== "other") {
+      setCode(option.sample);
+    }
+  }
+
+  function loadSample() {
+    const option = languageOptions.find((item) => item.id === language);
+    setCode(option?.sample ?? "");
+    setFilename(option?.filename ?? filename);
+  }
+
   return (
     <main className="app">
       <aside className="sidebar">
@@ -234,19 +385,30 @@ function App() {
               <div className="field-row">
                 <div>
                   <label htmlFor="language">Language</label>
-                  <input id="language" value={language} onChange={(event) => setLanguage(event.target.value)} />
+                  <select id="language" value={language} onChange={(event) => changeLanguage(event.target.value)}>
+                    {languageOptions.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label htmlFor="filename">Filename</label>
                   <input id="filename" value={filename} onChange={(event) => setFilename(event.target.value)} />
                 </div>
               </div>
-              <label htmlFor="code">Code</label>
+              <div className="code-heading">
+                <label htmlFor="code">Code</label>
+                <button onClick={loadSample} type="button" disabled={language === "other"}>
+                  Load Sample
+                </button>
+              </div>
               <textarea
                 id="code"
                 value={code}
                 onChange={(event) => setCode(event.target.value)}
-                placeholder={"def divide(a, b):\n    return a / b"}
+                placeholder={"Paste code to review"}
                 spellCheck={false}
               />
             </div>
