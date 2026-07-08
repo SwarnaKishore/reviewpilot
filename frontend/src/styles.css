@@ -310,6 +310,50 @@ textarea {
   white-space: nowrap;
 }
 
+.review-actions {
+  align-items: flex-end;
+  display: grid;
+  gap: 10px;
+  justify-items: end;
+}
+
+.review-actions button {
+  background: #183f35;
+  border: 0;
+  border-radius: 8px;
+  color: #ffffff;
+  cursor: pointer;
+  min-height: 38px;
+  padding: 0 14px;
+  white-space: nowrap;
+}
+
+.review-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.notice {
+  align-items: center;
+  border-radius: 8px;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-top: 14px;
+  padding: 12px 14px;
+}
+
+.notice.success {
+  background: #dff1e8;
+  border: 1px solid #7aad9b;
+  color: #173d32;
+}
+
+.notice a {
+  color: #173d32;
+  font-weight: 800;
+}
+
 .eyebrow {
   color: #3b7b66;
   font-size: 13px;
@@ -563,5 +607,11 @@ textarea {
 
   .review-header {
     display: block;
+  }
+
+  .review-actions {
+    align-items: stretch;
+    justify-items: stretch;
+    margin-top: 12px;
   }
 }

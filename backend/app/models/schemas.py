@@ -86,3 +86,9 @@ class ReviewSummary(BaseModel):
 
 class FeedbackRequest(BaseModel):
     status: str
+    finding_id: Optional[str] = None
+
+
+class GitHubCommentResponse(BaseModel):
+    html_url: str
+    message: str

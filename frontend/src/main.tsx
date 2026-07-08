@@ -99,6 +99,9 @@ function App() {
   const [history, setHistory] = React.useState<ReviewSummary[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [historyLoading, setHistoryLoading] = React.useState(false);
+  const [postingSummary, setPostingSummary] = React.useState(false);
+  const [postMessage, setPostMessage] = React.useState("");
+  const [postedCommentUrl, setPostedCommentUrl] = React.useState("");
   const [error, setError] = React.useState("");
 
   React.useEffect(() => {
@@ -120,6 +123,8 @@ function App() {
   async function runReview() {
     setLoading(true);
     setError("");
+    setPostMessage("");
+    setPostedCommentUrl("");
     try {
       const endpoint = mode === "pr" ? "/api/reviews" : "/api/playground/reviews";
       const payload =
@@ -145,10 +150,10 @@ function App() {
   }
 
   async function markFinding(findingId: string, status: string) {
-    const response = await fetch(`http://127.0.0.1:8000/api/findings/${findingId}/feedback`, {
+    const response = await fetch("http://127.0.0.1:8000/api/findings/feedback", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
+      body: JSON.stringify({ finding_id: findingId, status }),
     });
     if (response.ok) {
       setReview(await response.json());
@@ -158,12 +163,39 @@ function App() {
 
   async function openReview(reviewId: string) {
     setError("");
+    setPostMessage("");
+    setPostedCommentUrl("");
     const response = await fetch(`http://127.0.0.1:8000/api/reviews/${reviewId}`);
     if (!response.ok) {
       setError("Could not load saved review");
       return;
     }
     setReview(await response.json());
+  }
+
+  async function postSummaryToGitHub() {
+    if (!review) {
+      return;
+    }
+    setPostingSummary(true);
+    setError("");
+    setPostMessage("");
+    setPostedCommentUrl("");
+    try {
+      const response = await fetch(`http://127.0.0.1:8000/api/reviews/${review.id}/github/summary`, {
+        method: "POST",
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.detail || "Could not post GitHub summary");
+      }
+      setPostMessage(payload.message);
+      setPostedCommentUrl(payload.html_url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not post GitHub summary");
+    } finally {
+      setPostingSummary(false);
+    }
   }
 
   return (
@@ -296,8 +328,21 @@ function App() {
                 <h2>{review.pr.title}</h2>
                 <p>{review.summary}</p>
               </div>
-              {review.pr.html_url !== "#" ? <a href={review.pr.html_url} target="_blank" rel="noreferrer">Open PR</a> : null}
+              {review.pr.html_url !== "#" ? (
+                <div className="review-actions">
+                  <a href={review.pr.html_url} target="_blank" rel="noreferrer">Open PR</a>
+                  <button onClick={postSummaryToGitHub} disabled={postingSummary} type="button">
+                    {postingSummary ? "Posting..." : "Post Summary"}
+                  </button>
+                </div>
+              ) : null}
             </header>
+            {postMessage ? (
+              <div className="notice success">
+                {postMessage}
+                {postedCommentUrl ? <a href={postedCommentUrl} target="_blank" rel="noreferrer">View comment</a> : null}
+              </div>
+            ) : null}
 
             <div className="run-strip">
               {review.agent_runs.map((run) => (
