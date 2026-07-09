@@ -413,12 +413,16 @@ def _parse_change_summary(output_text: str, pr: PullRequestContext) -> ChangeSum
         except json.JSONDecodeError:
             return _fallback_change_summary(pr)
 
-    return ChangeSummary(
-        overview=str(data.get("overview") or _fallback_change_summary(pr).overview),
-        changed_areas=_string_list(data.get("changed_areas")) or _fallback_change_summary(pr).changed_areas,
-        behavior_changes=_string_list(data.get("behavior_changes")) or _fallback_change_summary(pr).behavior_changes,
-        review_focus=_string_list(data.get("review_focus")) or _fallback_change_summary(pr).review_focus,
+    fallback = _fallback_change_summary(pr)
+    summary = ChangeSummary(
+        overview=str(data.get("overview") or fallback.overview),
+        changed_areas=_string_list(data.get("changed_areas")) or fallback.changed_areas,
+        behavior_changes=_string_list(data.get("behavior_changes")) or fallback.behavior_changes,
+        review_focus=_string_list(data.get("review_focus")) or fallback.review_focus,
     )
+    if _is_generic_change_summary(summary):
+        return fallback
+    return summary
 
 
 def _parse_findings(agent: str, output_text: str, pr: PullRequestContext) -> list[Finding]:
@@ -503,13 +507,15 @@ def _fallback_change_summary(pr: PullRequestContext) -> ChangeSummary:
 
     behavior_changes: list[str] = []
     for item in pr.files[:5]:
-        hints = _change_hints(item.patch)
-        if hints:
-            behavior_changes.append(f"{item.filename}: {hints}")
+        behavior = _behavior_summary(item)
+        if behavior:
+            behavior_changes.append(f"{item.filename}: {behavior}")
     if not behavior_changes:
         behavior_changes.append("No clear runtime behavior change is visible from the available diff.")
 
     review_focus: list[str] = []
+    for item in pr.files[:5]:
+        review_focus.extend(_review_focus_for_file(item))
     if added_files:
         review_focus.append(f"New files: confirm the added code in {', '.join(added_files[:3])} has the right ownership, validation, and tests.")
     if modified_files:
@@ -519,23 +525,95 @@ def _fallback_change_summary(pr: PullRequestContext) -> ChangeSummary:
     if not review_focus:
         review_focus.append("Inspect the changed code paths and confirm expected test coverage.")
 
+    purpose = _purpose_summary(pr)
     return ChangeSummary(
         overview=(
             f"This pull request changes {file_count} file{'s' if file_count != 1 else ''}: {area_text}. "
-            "The summary below highlights the visible code-level changes from the patch."
+            f"{purpose}"
         ),
         changed_areas=changed_areas or ["No changed files available."],
         behavior_changes=behavior_changes,
-        review_focus=review_focus,
+        review_focus=_unique(review_focus),
     )
 
 
 def _describe_file_change(item) -> str:
     details = _changed_symbols(item.patch)
+    purpose = _file_purpose(item.patch)
     base = f"{item.filename} ({item.status}, +{item.additions}/-{item.deletions})"
+    if details and purpose:
+        return f"{base}: {details}. {purpose}"
+    if purpose:
+        return f"{base}: {purpose}"
     if details:
         return f"{base}: {details}"
     return f"{base}: changed content is available, but no obvious function, class, or route names were detected."
+
+
+def _purpose_summary(pr: PullRequestContext) -> str:
+    purposes = [_file_purpose(item.patch) for item in pr.files[:3]]
+    purposes = [purpose for purpose in purposes if purpose]
+    if purposes:
+        return " ".join(purposes)
+    return "The summary below highlights the visible code-level changes from the patch."
+
+
+def _file_purpose(patch: Optional[str]) -> str:
+    added_lines = _added_code_lines(patch)
+    if not added_lines:
+        return ""
+
+    functions = _function_names(added_lines)
+    request_fields = _request_fields(added_lines)
+    return_keys = _returned_keys(added_lines)
+
+    pieces: list[str] = []
+    if functions:
+        pieces.append(f"It adds or updates {', '.join(functions[:3])}.")
+    if request_fields:
+        pieces.append(f"The code reads {', '.join(request_fields[:4])} from the request.")
+    if _has_database_access(added_lines):
+        pieces.append("It queries the database as part of the request flow.")
+    if _logs_sensitive_data(added_lines):
+        pieces.append("It logs sensitive-looking data such as a token.")
+    if return_keys:
+        pieces.append(f"It returns {', '.join(return_keys[:6])} in the response.")
+    return " ".join(pieces)
+
+
+def _behavior_summary(item) -> str:
+    added_lines = _added_code_lines(item.patch)
+    hints = _change_hints(item.patch)
+    details: list[str] = []
+    if _has_database_access(added_lines):
+        details.append("new database lookup or query behavior")
+    request_fields = _request_fields(added_lines)
+    if request_fields:
+        details.append(f"request fields drive behavior ({', '.join(request_fields[:4])})")
+    return_keys = _returned_keys(added_lines)
+    if return_keys:
+        details.append(f"response now includes {', '.join(return_keys[:6])}")
+    if _logs_sensitive_data(added_lines):
+        details.append("logs sensitive-looking token data")
+    if hints:
+        details.append(hints)
+    return "; ".join(_unique(details))
+
+
+def _review_focus_for_file(item) -> list[str]:
+    added_lines = _added_code_lines(item.patch)
+    focus: list[str] = []
+    request_fields = _request_fields(added_lines)
+    if "`user_id`" in request_fields:
+        focus.append(f"{item.filename}: verify callers can only request profiles they are authorized to access.")
+    if _has_database_access(added_lines):
+        focus.append(f"{item.filename}: check that database queries are parameterized and not built from raw request input.")
+    if _logs_sensitive_data(added_lines):
+        focus.append(f"{item.filename}: remove or mask token logging before this reaches production.")
+    return_keys = _returned_keys(added_lines)
+    if "`api_token`" in return_keys:
+        focus.append(f"{item.filename}: confirm whether returning `api_token` is intended; this exposes credential material to the client.")
+    return focus
 
 
 def _changed_symbols(patch: Optional[str]) -> str:
@@ -565,10 +643,75 @@ def _changed_symbols(patch: Optional[str]) -> str:
     return "; ".join(pieces)
 
 
+def _added_code_lines(patch: Optional[str]) -> list[str]:
+    if not patch:
+        return []
+    return [
+        row[1:].strip()
+        for row in patch.splitlines()
+        if row.startswith("+") and not row.startswith("+++") and row[1:].strip()
+    ]
+
+
+def _function_names(lines: list[str]) -> list[str]:
+    names: list[str] = []
+    for line in lines:
+        for prefix in ("def ", "async def ", "function "):
+            if line.startswith(prefix):
+                name = line.split(prefix, 1)[1].split("(", 1)[0].strip()
+                if name:
+                    names.append(f"`{name}`")
+        if line.startswith("const ") and "=>" in line:
+            name = line.split("const ", 1)[1].split("=", 1)[0].strip()
+            if name:
+                names.append(f"`{name}`")
+    return _unique(names)
+
+
+def _request_fields(lines: list[str]) -> list[str]:
+    fields: list[str] = []
+    for line in lines:
+        for marker in ('request.json.get("', "request.json.get('", 'request.json["', "request.json['"):
+            if marker in line:
+                field = line.split(marker, 1)[1].split(marker[-1], 1)[0]
+                if field:
+                    fields.append(f"`{field}`")
+    return _unique(fields)
+
+
+def _returned_keys(lines: list[str]) -> list[str]:
+    keys: list[str] = []
+    inside_return_dict = False
+    for line in lines:
+        if line.startswith("return {"):
+            inside_return_dict = True
+            continue
+        if inside_return_dict and line.startswith("}"):
+            inside_return_dict = False
+            continue
+        if inside_return_dict and ":" in line:
+            key = line.split(":", 1)[0].strip().strip("\"'")
+            if key:
+                keys.append(f"`{key}`")
+    return _unique(keys)
+
+
+def _has_database_access(lines: list[str]) -> bool:
+    return any("select " in line.lower() or ".execute(" in line.lower() or ".fetchone(" in line.lower() for line in lines)
+
+
+def _logs_sensitive_data(lines: list[str]) -> bool:
+    return any(
+        ("print(" in line.lower() or "log" in line.lower())
+        and any(word in line.lower() for word in ("token", "password", "secret", "api_key"))
+        for line in lines
+    )
+
+
 def _change_hints(patch: Optional[str]) -> str:
     if not patch:
         return ""
-    added_lines = [row[1:].strip() for row in patch.splitlines() if row.startswith("+") and not row.startswith("+++")]
+    added_lines = _added_code_lines(patch)
     removed_lines = [row[1:].strip() for row in patch.splitlines() if row.startswith("-") and not row.startswith("---")]
     hints: list[str] = []
 
@@ -584,6 +727,24 @@ def _change_hints(patch: Optional[str]) -> str:
         hints.append("test coverage changed")
 
     return "; ".join(_unique(hints))
+
+
+def _is_generic_change_summary(summary: ChangeSummary) -> bool:
+    generic_phrases = (
+        "review the diff",
+        "confirm whether behavior",
+        "inspect the changed code paths",
+        "no clear runtime behavior",
+    )
+    text = " ".join(
+        [
+            summary.overview,
+            *summary.changed_areas,
+            *summary.behavior_changes,
+            *summary.review_focus,
+        ]
+    ).lower()
+    return any(phrase in text for phrase in generic_phrases)
 
 
 def _rule_judge_findings(findings: list[Finding]) -> list[Finding]:
