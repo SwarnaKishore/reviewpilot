@@ -525,43 +525,52 @@ function App() {
 
             <ChangeSummaryPanel review={review} />
 
-            <div className="run-strip">
-              {review.agent_runs.map((run) => (
-                <div className="run" key={run.agent}>
-                  <span>{run.agent}</span>
-                  <strong>{run.findings.length}</strong>
-                  <small>{run.model} · {run.latency_ms}ms</small>
-                </div>
-              ))}
-            </div>
+            {review.agent_runs.length > 0 ? (
+              <div className="run-strip">
+                {review.agent_runs.map((run) => (
+                  <div className="run" key={run.agent}>
+                    <span>{run.agent}</span>
+                    <strong>{run.findings.length}</strong>
+                    <small>{run.model} · {run.latency_ms}ms</small>
+                  </div>
+                ))}
+              </div>
+            ) : null}
 
-            <EvaluationDashboard review={review} />
+            {review.agent_runs.length > 0 ? <EvaluationDashboard review={review} /> : null}
 
             <section className="findings">
-              {review.final_findings.map((finding) => (
-                <article className="finding" key={finding.id}>
-                  <div className="finding-top">
-                    <span className={`severity ${finding.severity}`}>{finding.severity}</span>
-                    <span>{finding.agent}</span>
-                    <code>{finding.file}{finding.line ? `:${finding.line}` : ""}</code>
-                  </div>
-                  <h3>{finding.title}</h3>
-                  <p>{finding.evidence}</p>
-                  <p className="recommendation">{finding.recommendation}</p>
-                  <div className="feedback">
-                    {["accepted", "rejected", "ignored"].map((status) => (
-                      <button
-                        className={finding.status === status ? "selected" : ""}
-                        key={status}
-                        onClick={() => markFinding(finding.id, status)}
-                        type="button"
-                      >
-                        {status}
-                      </button>
-                    ))}
-                  </div>
-                </article>
-              ))}
+              {review.final_findings.length === 0 ? (
+                <div className="empty-findings">
+                  <h3>No specialist findings</h3>
+                  <p>{review.agent_runs.length === 0 ? "Summary-only mode skipped specialist agents and the Judge." : "No actionable findings were reported."}</p>
+                </div>
+              ) : (
+                review.final_findings.map((finding) => (
+                  <article className="finding" key={finding.id}>
+                    <div className="finding-top">
+                      <span className={`severity ${finding.severity}`}>{finding.severity}</span>
+                      <span>{finding.agent}</span>
+                      <code>{finding.file}{finding.line ? `:${finding.line}` : ""}</code>
+                    </div>
+                    <h3>{finding.title}</h3>
+                    <p>{finding.evidence}</p>
+                    <p className="recommendation">{finding.recommendation}</p>
+                    <div className="feedback">
+                      {["accepted", "rejected", "ignored"].map((status) => (
+                        <button
+                          className={finding.status === status ? "selected" : ""}
+                          key={status}
+                          onClick={() => markFinding(finding.id, status)}
+                          type="button"
+                        >
+                          {status}
+                        </button>
+                      ))}
+                    </div>
+                  </article>
+                ))
+              )}
             </section>
           </>
         ) : (

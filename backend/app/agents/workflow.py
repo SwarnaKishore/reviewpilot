@@ -68,12 +68,23 @@ def _build_review_graph(provider):
     graph.add_node("judge", _judge_node(provider))
 
     graph.add_edge(START, "summary")
-    graph.add_edge("summary", SPECIALIST_AGENTS[0])
+    graph.add_conditional_edges(
+        "summary",
+        _next_after_summary,
+        {
+            "specialists": SPECIALIST_AGENTS[0],
+            "done": END,
+        },
+    )
     for current_agent, next_agent in zip(SPECIALIST_AGENTS, SPECIALIST_AGENTS[1:]):
         graph.add_edge(current_agent, next_agent)
     graph.add_edge(SPECIALIST_AGENTS[-1], "judge")
     graph.add_edge("judge", END)
     return graph.compile()
+
+
+def _next_after_summary(state: ReviewState) -> str:
+    return "specialists" if state["selected_agents"] else "done"
 
 
 def _summary_node(provider):

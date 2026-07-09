@@ -559,6 +559,22 @@ textarea {
   padding: 18px;
 }
 
+.empty-findings {
+  background: #fbfaf6;
+  border: 1px solid #d9d4c6;
+  border-radius: 8px;
+  padding: 18px;
+}
+
+.empty-findings h3 {
+  font-size: 18px;
+  margin-bottom: 6px;
+}
+
+.empty-findings p {
+  color: #66706a;
+}
+
 .finding-top {
   align-items: center;
   color: #69726c;
