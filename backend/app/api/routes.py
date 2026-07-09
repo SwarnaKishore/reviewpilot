@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 
 from app.agents.workflow import run_review
-from app.core.github import fetch_pull_request, post_review_summary
+from app.core.github import fetch_pull_request, post_inline_review_comments, post_review_summary
 from app.core.reviews import (
     clear_reviews,
     dashboard_metrics,
@@ -103,6 +103,20 @@ async def post_github_summary(review_id: str) -> GitHubCommentResponse:
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return GitHubCommentResponse(html_url=comment_url, message="Posted or updated ReviewPilot summary on GitHub")
+
+
+@router.post("/reviews/{review_id}/github/inline-comments", response_model=GitHubCommentResponse)
+async def post_github_inline_comments(review_id: str) -> GitHubCommentResponse:
+    review = load_review(review_id)
+    if not review:
+        raise HTTPException(status_code=404, detail="Review not found")
+    try:
+        review_url, posted_count = await post_inline_review_comments(review)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if posted_count == 0:
+        return GitHubCommentResponse(html_url=review_url, message="No new inline comments to post")
+    return GitHubCommentResponse(html_url=review_url, message=f"Posted {posted_count} inline comment{'s' if posted_count != 1 else ''} on GitHub")
 
 
 @router.post("/findings/{finding_id}/feedback", response_model=ReviewResult)

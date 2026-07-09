@@ -10,6 +10,7 @@ from app.models.schemas import Finding, PullRequestContext, PullRequestFile, Rev
 
 PR_RE = re.compile(r"https://github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)/pull/(?P<number>\d+)")
 SUMMARY_MARKER_PREFIX = "<!-- reviewpilot-summary:"
+INLINE_MARKER_PREFIX = "<!-- reviewpilot-inline:"
 
 
 def parse_pr_url(pr_url: str) -> tuple[str, str, int]:
@@ -71,6 +72,45 @@ async def post_review_summary(review: ReviewResult) -> str:
             response = await client.post(comments_url, json={"body": body})
         _raise_for_github_error(response)
     return response.json().get("html_url", review.pr.html_url)
+
+
+async def post_inline_review_comments(review: ReviewResult) -> tuple[str, int]:
+    if review.pr.html_url == "#" or review.pr.owner == "playground":
+        raise ValueError("Inline comments are only available for GitHub pull request reviews")
+    if not review.final_findings:
+        raise ValueError("No findings are available to post as inline comments")
+
+    headers = await github_auth_headers()
+    if "Authorization" not in headers:
+        raise ValueError("GITHUB_TOKEN or GitHub App credentials are required to post inline comments")
+
+    comments_url = f"https://api.github.com/repos/{review.pr.owner}/{review.pr.repo}/pulls/{review.pr.number}/comments"
+    reviews_url = f"https://api.github.com/repos/{review.pr.owner}/{review.pr.repo}/pulls/{review.pr.number}/reviews"
+    async with httpx.AsyncClient(headers=headers, timeout=30) as client:
+        existing_markers = await _existing_inline_markers(client, comments_url)
+        comments = [
+            {
+                "path": finding.file,
+                "line": finding.line,
+                "side": "RIGHT",
+                "body": _inline_comment_body(finding),
+            }
+            for finding in review.final_findings
+            if finding.line is not None and _inline_marker(finding) not in existing_markers
+        ]
+        if not comments:
+            return review.pr.html_url, 0
+
+        response = await client.post(
+            reviews_url,
+            json={
+                "event": "COMMENT",
+                "body": "ReviewPilot posted inline comments for actionable findings.",
+                "comments": comments,
+            },
+        )
+        _raise_for_github_error(response)
+    return response.json().get("html_url", review.pr.html_url), len(comments)
 
 
 def _summary_markdown(review: ReviewResult) -> str:
@@ -147,6 +187,52 @@ def _finding_location(finding: Finding) -> str:
     if finding.line is None:
         return finding.file
     return f"{finding.file}:{finding.line}"
+
+
+async def _existing_inline_markers(client: httpx.AsyncClient, comments_url: str) -> set[str]:
+    markers: set[str] = set()
+    page = 1
+    while True:
+        response = await client.get(comments_url, params={"per_page": 100, "page": page})
+        _raise_for_github_error(response)
+        comments = response.json()
+        for comment in comments:
+            body = comment.get("body", "")
+            marker = _extract_inline_marker(body)
+            if marker:
+                markers.add(marker)
+        if len(comments) < 100:
+            return markers
+        page += 1
+
+
+def _inline_comment_body(finding: Finding) -> str:
+    return "\n".join(
+        [
+            _inline_marker(finding),
+            f"**ReviewPilot [{finding.severity}][{finding.category}]**",
+            "",
+            f"**{finding.title}**",
+            "",
+            finding.evidence,
+            "",
+            f"Recommendation: {finding.recommendation}",
+        ]
+    ).strip()
+
+
+def _inline_marker(finding: Finding) -> str:
+    return f"{INLINE_MARKER_PREFIX}{finding.id} -->"
+
+
+def _extract_inline_marker(body: str) -> str | None:
+    start = body.find(INLINE_MARKER_PREFIX)
+    if start == -1:
+        return None
+    end = body.find("-->", start)
+    if end == -1:
+        return None
+    return body[start : end + 3]
 
 
 def _raise_for_github_error(response: httpx.Response) -> None:

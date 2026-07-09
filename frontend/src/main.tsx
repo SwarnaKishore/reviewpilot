@@ -242,6 +242,7 @@ function App() {
   const [loading, setLoading] = React.useState(false);
   const [historyLoading, setHistoryLoading] = React.useState(false);
   const [postingSummary, setPostingSummary] = React.useState(false);
+  const [postingInline, setPostingInline] = React.useState(false);
   const [postMessage, setPostMessage] = React.useState("");
   const [postedCommentUrl, setPostedCommentUrl] = React.useState("");
   const [pendingDelete, setPendingDelete] = React.useState<PendingDelete | null>(null);
@@ -406,6 +407,31 @@ function App() {
       setError(err instanceof Error ? err.message : "Could not post GitHub summary");
     } finally {
       setPostingSummary(false);
+    }
+  }
+
+  async function postInlineCommentsToGitHub() {
+    if (!review) {
+      return;
+    }
+    setPostingInline(true);
+    setError("");
+    setPostMessage("");
+    setPostedCommentUrl("");
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/reviews/${review.id}/github/inline-comments`, {
+        method: "POST",
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.detail || "Could not post inline comments");
+      }
+      setPostMessage(payload.message);
+      setPostedCommentUrl(payload.html_url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not post inline comments");
+    } finally {
+      setPostingInline(false);
     }
   }
 
@@ -590,6 +616,13 @@ function App() {
                   <a href={review.pr.html_url} target="_blank" rel="noreferrer">Open PR</a>
                   <button onClick={postSummaryToGitHub} disabled={postingSummary} type="button">
                     {postingSummary ? "Posting..." : "Post Summary"}
+                  </button>
+                  <button
+                    onClick={postInlineCommentsToGitHub}
+                    disabled={postingInline || review.final_findings.length === 0}
+                    type="button"
+                  >
+                    {postingInline ? "Posting..." : "Post Inline"}
                   </button>
                 </div>
               ) : null}
