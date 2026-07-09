@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from app.core.database import ReviewRecord, db_session
 from app.models.schemas import ReviewResult, ReviewSummary
@@ -53,6 +53,21 @@ def list_reviews(limit: int = 25) -> list[ReviewSummary]:
             )
             for record in records
         ]
+
+
+def clear_reviews() -> int:
+    with db_session() as session:
+        result = session.execute(delete(ReviewRecord))
+        return result.rowcount or 0
+
+
+def delete_review(review_id: str) -> bool:
+    with db_session() as session:
+        record = session.get(ReviewRecord, review_id)
+        if not record:
+            return False
+        session.delete(record)
+        return True
 
 
 def update_finding_feedback(finding_id: str, status: str) -> Optional[ReviewResult]:

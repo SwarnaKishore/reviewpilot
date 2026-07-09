@@ -4,7 +4,15 @@ from fastapi import APIRouter, HTTPException
 
 from app.agents.workflow import run_review
 from app.core.github import fetch_pull_request, post_review_summary
-from app.core.reviews import dashboard_metrics, get_review as load_review, list_reviews, save_review, update_finding_feedback
+from app.core.reviews import (
+    clear_reviews,
+    dashboard_metrics,
+    delete_review,
+    get_review as load_review,
+    list_reviews,
+    save_review,
+    update_finding_feedback,
+)
 from app.models.schemas import (
     FeedbackRequest,
     GitHubCommentResponse,
@@ -64,12 +72,25 @@ async def get_reviews() -> list[ReviewSummary]:
     return list_reviews()
 
 
+@router.delete("/reviews")
+async def delete_reviews() -> dict[str, int]:
+    deleted = clear_reviews()
+    return {"deleted": deleted}
+
+
 @router.get("/reviews/{review_id}", response_model=ReviewResult)
 async def get_review_by_id(review_id: str) -> ReviewResult:
     review = load_review(review_id)
     if not review:
         raise HTTPException(status_code=404, detail="Review not found")
     return review
+
+
+@router.delete("/reviews/{review_id}")
+async def delete_review_by_id(review_id: str) -> dict[str, str]:
+    if not delete_review(review_id):
+        raise HTTPException(status_code=404, detail="Review not found")
+    return {"deleted": review_id}
 
 
 @router.post("/reviews/{review_id}/github/summary", response_model=GitHubCommentResponse)

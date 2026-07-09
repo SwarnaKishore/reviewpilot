@@ -248,6 +248,11 @@ textarea {
   font-size: 16px;
 }
 
+.history-actions {
+  display: flex;
+  gap: 10px;
+}
+
 .history-heading button {
   background: transparent;
   border: 0;
@@ -255,6 +260,11 @@ textarea {
   cursor: pointer;
   font-size: 13px;
   font-weight: 800;
+}
+
+.history-heading button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .muted {
@@ -274,10 +284,18 @@ textarea {
   border: 1px solid #d9d4c6;
   border-radius: 8px;
   color: #25302b;
+  display: grid;
+  grid-template-columns: 1fr 28px;
+}
+
+.history-open {
+  background: transparent;
+  border: 0;
   cursor: pointer;
   display: grid;
   gap: 4px;
-  padding: 12px;
+  min-width: 0;
+  padding: 12px 4px 12px 12px;
   text-align: left;
   width: 100%;
 }
@@ -287,13 +305,33 @@ textarea {
   box-shadow: inset 3px 0 0 #3b7b66;
 }
 
-.history-item strong {
+.history-open strong {
   line-height: 1.25;
 }
 
-.history-item small {
+.history-open small {
   color: #68716b;
   line-height: 1.35;
+}
+
+.history-delete {
+  align-items: center;
+  align-self: start;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: #7b6f65;
+  cursor: pointer;
+  display: inline-flex;
+  height: 28px;
+  justify-content: center;
+  margin: 8px 8px 0 0;
+  width: 28px;
+}
+
+.history-delete:hover {
+  background: #f2eee6;
+  color: #9e3328;
 }
 
 .history-risk {
@@ -316,6 +354,67 @@ textarea {
 
 .history-risk.low {
   background: #55766b;
+}
+
+.modal-backdrop {
+  align-items: center;
+  background: rgba(22, 32, 28, 0.34);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 24px;
+  position: fixed;
+  z-index: 20;
+}
+
+.confirm-dialog {
+  background: #fbfaf6;
+  border: 1px solid #d9d4c6;
+  border-radius: 8px;
+  box-shadow: 0 18px 50px rgba(22, 32, 28, 0.24);
+  color: #25302b;
+  display: grid;
+  gap: 12px;
+  max-width: 420px;
+  padding: 22px;
+  width: min(420px, 100%);
+}
+
+.confirm-dialog h2 {
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.confirm-dialog p {
+  color: #68716b;
+  line-height: 1.45;
+}
+
+.dialog-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 6px;
+}
+
+.dialog-actions button {
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 800;
+  min-height: 38px;
+  padding: 0 14px;
+}
+
+.secondary-action {
+  background: #ffffff;
+  border: 1px solid #cfc8bb;
+  color: #25302b;
+}
+
+.danger-action {
+  background: #9e3328;
+  border: 1px solid #9e3328;
+  color: #ffffff;
 }
 
 .workspace {

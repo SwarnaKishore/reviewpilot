@@ -69,6 +69,10 @@ type ReviewSummary = {
   created_at: string;
 };
 
+type PendingDelete =
+  | { type: "all" }
+  | { type: "single"; review: ReviewSummary };
+
 type EvaluationSummary = {
   total: number;
   accepted: number;
@@ -240,6 +244,7 @@ function App() {
   const [postingSummary, setPostingSummary] = React.useState(false);
   const [postMessage, setPostMessage] = React.useState("");
   const [postedCommentUrl, setPostedCommentUrl] = React.useState("");
+  const [pendingDelete, setPendingDelete] = React.useState<PendingDelete | null>(null);
   const [error, setError] = React.useState("");
 
   React.useEffect(() => {
@@ -264,6 +269,65 @@ function App() {
     } finally {
       setHistoryLoading(false);
     }
+  }
+
+  async function clearHistory() {
+    if (history.length === 0) {
+      return;
+    }
+    setHistoryLoading(true);
+    setError("");
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/reviews`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        const payload = await response.json();
+        throw new Error(payload.detail || "Could not clear history");
+      }
+      setHistory([]);
+      setReview(null);
+      setPostMessage("");
+      setPostedCommentUrl("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not clear history");
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  async function deleteHistoryItem(item: ReviewSummary) {
+    setError("");
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/reviews/${item.id}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        const payload = await response.json();
+        throw new Error(payload.detail || "Could not clear review");
+      }
+      setHistory((current) => current.filter((historyItem) => historyItem.id !== item.id));
+      if (review?.id === item.id) {
+        setReview(null);
+        setPostMessage("");
+        setPostedCommentUrl("");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not clear review");
+    }
+  }
+
+  async function confirmDelete() {
+    const target = pendingDelete;
+    if (!target) {
+      return;
+    }
+    setPendingDelete(null);
+    if (target.type === "all") {
+      await clearHistory();
+      return;
+    }
+    await deleteHistoryItem(target.review);
   }
 
   async function runReview() {
@@ -361,6 +425,7 @@ function App() {
   }
 
   return (
+    <>
     <main className="app">
       <aside className="sidebar">
         <div className="brand">
@@ -474,27 +539,38 @@ function App() {
         <section className="panel history-panel">
           <div className="history-heading">
             <h2>History</h2>
-            <button onClick={loadHistory} type="button" title="Refresh review history">
-              refresh
-            </button>
+            <div className="history-actions">
+              <button onClick={loadHistory} type="button" title="Refresh review history">
+                refresh
+              </button>
+              <button onClick={() => setPendingDelete({ type: "all" })} type="button" disabled={history.length === 0 || historyLoading} title="Clear saved review history">
+                clear
+              </button>
+            </div>
           </div>
           {historyLoading ? <p className="muted">Loading saved reviews...</p> : null}
           {!historyLoading && history.length === 0 ? <p className="muted">No saved reviews yet.</p> : null}
           <div className="history-list">
             {history.map((item) => (
-              <button
-                className={review?.id === item.id ? "history-item active" : "history-item"}
-                key={item.id}
-                onClick={() => openReview(item.id)}
-                type="button"
-              >
-                <span className={`history-risk ${item.risk_level}`}>{item.risk_level}</span>
-                <strong>{item.title}</strong>
-                <small>
-                  {item.owner}/{item.repo} #{item.number} · {formatDate(item.created_at)}
-                </small>
-                <small>{item.recommendation} · ${item.estimated_cost_usd.toFixed(4)}</small>
-              </button>
+              <div className={review?.id === item.id ? "history-item active" : "history-item"} key={item.id}>
+                <button className="history-open" onClick={() => openReview(item.id)} type="button">
+                  <span className={`history-risk ${item.risk_level}`}>{item.risk_level}</span>
+                  <strong>{item.title}</strong>
+                  <small>
+                    {item.owner}/{item.repo} #{item.number} · {formatDate(item.created_at)}
+                  </small>
+                  <small>{item.recommendation} · ${item.estimated_cost_usd.toFixed(4)}</small>
+                </button>
+                <button
+                  className="history-delete"
+                  onClick={() => setPendingDelete({ type: "single", review: item })}
+                  type="button"
+                  title="Clear this saved review"
+                  aria-label={`Clear ${item.title}`}
+                >
+                  <XCircle size={16} />
+                </button>
+              </div>
             ))}
           </div>
         </section>
@@ -583,6 +659,35 @@ function App() {
         )}
       </section>
     </main>
+    {pendingDelete ? (
+      <div className="modal-backdrop" role="presentation" onMouseDown={() => setPendingDelete(null)}>
+        <section
+          aria-labelledby="delete-dialog-title"
+          aria-modal="true"
+          className="confirm-dialog"
+          onMouseDown={(event) => event.stopPropagation()}
+          role="dialog"
+        >
+          <h2 id="delete-dialog-title">
+            {pendingDelete.type === "all" ? "Clear all history?" : "Clear this review?"}
+          </h2>
+          <p>
+            {pendingDelete.type === "all"
+              ? "This removes every saved ReviewPilot run from history."
+              : `This removes "${pendingDelete.review.title}" from history.`}
+          </p>
+          <div className="dialog-actions">
+            <button className="secondary-action" onClick={() => setPendingDelete(null)} type="button">
+              Cancel
+            </button>
+            <button className="danger-action" onClick={confirmDelete} type="button">
+              Clear
+            </button>
+          </div>
+        </section>
+      </div>
+    ) : null}
+    </>
   );
 }
 
