@@ -103,6 +103,8 @@ const agents = [
   { id: "testing", label: "Testing", icon: TestTube2 },
 ];
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
+
 const languageOptions: LanguageOption[] = [
   {
     id: "python",
@@ -255,7 +257,7 @@ function App() {
   async function loadHistory() {
     setHistoryLoading(true);
     try {
-      const response = await fetch("http://127.0.0.1:8000/api/reviews");
+      const response = await fetch(`${API_BASE_URL}/api/reviews`);
       if (response.ok) {
         setHistory(await response.json());
       }
@@ -276,7 +278,7 @@ function App() {
         mode === "pr"
           ? { pr_url: prUrl, agents: reviewAgents }
           : { language, filename, code, agents: reviewAgents };
-      const response = await fetch(`http://127.0.0.1:8000${endpoint}`, {
+      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -295,7 +297,7 @@ function App() {
   }
 
   async function markFinding(findingId: string, status: string) {
-    const response = await fetch("http://127.0.0.1:8000/api/findings/feedback", {
+    const response = await fetch(`${API_BASE_URL}/api/findings/feedback`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ finding_id: findingId, status }),
@@ -310,7 +312,7 @@ function App() {
     setError("");
     setPostMessage("");
     setPostedCommentUrl("");
-    const response = await fetch(`http://127.0.0.1:8000/api/reviews/${reviewId}`);
+    const response = await fetch(`${API_BASE_URL}/api/reviews/${reviewId}`);
     if (!response.ok) {
       setError("Could not load saved review");
       return;
@@ -327,7 +329,7 @@ function App() {
     setPostMessage("");
     setPostedCommentUrl("");
     try {
-      const response = await fetch(`http://127.0.0.1:8000/api/reviews/${review.id}/github/summary`, {
+      const response = await fetch(`${API_BASE_URL}/api/reviews/${review.id}/github/summary`, {
         method: "POST",
       });
       const payload = await response.json();

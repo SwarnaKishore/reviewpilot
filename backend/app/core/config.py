@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     ai_provider: str = "mock"
     ai_model: str = "claude-haiku-4-5"
     database_url: str = "sqlite:///./reviewpilot.db"
+    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

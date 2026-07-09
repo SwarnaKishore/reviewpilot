@@ -47,6 +47,12 @@ npm run dev
 
 Open `http://127.0.0.1:5173`.
 
+For deployed frontends, set:
+
+```env
+VITE_API_BASE_URL=https://your-backend.onrender.com
+```
+
 ## Review Modes
 
 Pull Request mode:
@@ -107,6 +113,45 @@ Recommended GitHub App repository permissions:
 - Issues: read and write
 
 ReviewPilot prefers GitHub App installation auth when all app settings are present, and falls back to `GITHUB_TOKEN` otherwise.
+
+## Deployment
+
+Recommended setup:
+
+- Frontend: Vercel
+- Backend: Render Web Service
+- Database: Render PostgreSQL
+
+Backend build command:
+
+```bash
+pip install -r requirements.txt
+```
+
+Backend start command:
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port $PORT
+```
+
+Backend production environment:
+
+```env
+AI_PROVIDER=claude
+AI_MODEL=claude-haiku-4-5
+ANTHROPIC_API_KEY=
+GITHUB_APP_ID=
+GITHUB_APP_PRIVATE_KEY=
+GITHUB_APP_INSTALLATION_ID=
+DATABASE_URL=postgresql+psycopg://...
+CORS_ORIGINS=https://your-frontend.vercel.app
+```
+
+Frontend production environment:
+
+```env
+VITE_API_BASE_URL=https://your-backend.onrender.com
+```
 
 ## Environment
 
