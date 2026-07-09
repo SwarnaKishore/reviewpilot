@@ -38,13 +38,7 @@ class MockProvider(ModelProvider):
 
     async def summarize(self, pr: PullRequestContext) -> tuple[ChangeSummary, dict]:
         started = time.perf_counter()
-        changed_files = [item.filename for item in pr.files]
-        summary = ChangeSummary(
-            overview=f"This review covers {len(pr.files)} changed file{'s' if len(pr.files) != 1 else ''}.",
-            changed_areas=[f"{item.filename} ({item.status}, +{item.additions}/-{item.deletions})" for item in pr.files],
-            behavior_changes=["Review the diff to confirm whether behavior, permissions, or data exposure changed."],
-            review_focus=changed_files[:4] or ["No changed files available."],
-        )
+        summary = _fallback_change_summary(pr)
         return summary, {
             "latency_ms": int((time.perf_counter() - started) * 1000),
             "input_tokens": sum(len((item.patch or "")) // 4 for item in pr.files),
@@ -279,13 +273,17 @@ Changed files and patches:
 
 Return JSON with this exact shape:
 {{
-  "overview": "one short paragraph explaining the change",
-  "changed_areas": ["file/module changed and what changed there"],
-  "behavior_changes": ["user-visible or system behavior changes"],
-  "review_focus": ["what a reviewer should inspect closely"]
+  "overview": "2-3 plain-English sentences explaining the purpose of the change and the likely intent",
+  "changed_areas": ["file/module changed, including the important functions, routes, classes, or data paths touched"],
+  "behavior_changes": ["concrete behavior impact, such as new endpoint, changed permission check, new data returned, validation changed, or 'No clear runtime behavior change visible from the diff'"],
+  "review_focus": ["specific code paths or assumptions a reviewer should inspect closely and why"]
 }}
 
-Use plain English. Do not include generic advice.
+Rules:
+- Explain what the code now does, not only how many files changed.
+- Mention important added, removed, or modified functions/classes/routes when visible.
+- Do not say "review the diff" or give generic advice.
+- If impact is uncertain, say exactly what is uncertain based on the visible patch.
 """.strip()
 
 
@@ -413,18 +411,13 @@ def _parse_change_summary(output_text: str, pr: PullRequestContext) -> ChangeSum
         try:
             data = json.loads(_extract_json_object(output_text))
         except json.JSONDecodeError:
-            return ChangeSummary(
-                overview=f"This review covers {len(pr.files)} changed files.",
-                changed_areas=[item.filename for item in pr.files],
-                behavior_changes=[],
-                review_focus=[item.filename for item in pr.files[:4]],
-            )
+            return _fallback_change_summary(pr)
 
     return ChangeSummary(
-        overview=str(data.get("overview") or f"This review covers {len(pr.files)} changed files."),
-        changed_areas=_string_list(data.get("changed_areas")),
-        behavior_changes=_string_list(data.get("behavior_changes")),
-        review_focus=_string_list(data.get("review_focus")),
+        overview=str(data.get("overview") or _fallback_change_summary(pr).overview),
+        changed_areas=_string_list(data.get("changed_areas")) or _fallback_change_summary(pr).changed_areas,
+        behavior_changes=_string_list(data.get("behavior_changes")) or _fallback_change_summary(pr).behavior_changes,
+        review_focus=_string_list(data.get("review_focus")) or _fallback_change_summary(pr).review_focus,
     )
 
 
@@ -497,6 +490,102 @@ def _parse_judge_findings(output_text: str, candidate_findings: list[Finding]) -
     return final_findings
 
 
+def _fallback_change_summary(pr: PullRequestContext) -> ChangeSummary:
+    file_count = len(pr.files)
+    changed_areas = [_describe_file_change(item) for item in pr.files[:8]]
+    added_files = [item.filename for item in pr.files if item.status == "added"]
+    modified_files = [item.filename for item in pr.files if item.status == "modified"]
+    deleted_files = [item.filename for item in pr.files if item.status == "removed"]
+
+    area_text = ", ".join(item.filename for item in pr.files[:3]) or "the pull request"
+    if file_count > 3:
+        area_text += f", and {file_count - 3} more file{'s' if file_count - 3 != 1 else ''}"
+
+    behavior_changes: list[str] = []
+    for item in pr.files[:5]:
+        hints = _change_hints(item.patch)
+        if hints:
+            behavior_changes.append(f"{item.filename}: {hints}")
+    if not behavior_changes:
+        behavior_changes.append("No clear runtime behavior change is visible from the available diff.")
+
+    review_focus: list[str] = []
+    if added_files:
+        review_focus.append(f"New files: confirm the added code in {', '.join(added_files[:3])} has the right ownership, validation, and tests.")
+    if modified_files:
+        review_focus.append(f"Modified paths: check {', '.join(modified_files[:3])} for behavior changes and regression coverage.")
+    if deleted_files:
+        review_focus.append(f"Removed files: verify nothing still depends on {', '.join(deleted_files[:3])}.")
+    if not review_focus:
+        review_focus.append("Inspect the changed code paths and confirm expected test coverage.")
+
+    return ChangeSummary(
+        overview=(
+            f"This pull request changes {file_count} file{'s' if file_count != 1 else ''}: {area_text}. "
+            "The summary below highlights the visible code-level changes from the patch."
+        ),
+        changed_areas=changed_areas or ["No changed files available."],
+        behavior_changes=behavior_changes,
+        review_focus=review_focus,
+    )
+
+
+def _describe_file_change(item) -> str:
+    details = _changed_symbols(item.patch)
+    base = f"{item.filename} ({item.status}, +{item.additions}/-{item.deletions})"
+    if details:
+        return f"{base}: {details}"
+    return f"{base}: changed content is available, but no obvious function, class, or route names were detected."
+
+
+def _changed_symbols(patch: Optional[str]) -> str:
+    if not patch:
+        return ""
+    added: list[str] = []
+    removed: list[str] = []
+    for row in patch.splitlines():
+        if row.startswith("+++") or row.startswith("---"):
+            continue
+        target = added if row.startswith("+") else removed if row.startswith("-") else None
+        if target is None:
+            continue
+        stripped = row[1:].strip()
+        for prefix in ("def ", "async def ", "class ", "function ", "const ", "let ", "var ", "export "):
+            if stripped.startswith(prefix):
+                target.append(stripped[:100])
+                break
+        if any(marker in stripped for marker in ("@app.", "@router.", "router.", "app.")):
+            target.append(stripped[:100])
+
+    pieces = []
+    if added:
+        pieces.append(f"added {', '.join(_unique(added)[:3])}")
+    if removed:
+        pieces.append(f"removed {', '.join(_unique(removed)[:3])}")
+    return "; ".join(pieces)
+
+
+def _change_hints(patch: Optional[str]) -> str:
+    if not patch:
+        return ""
+    added_lines = [row[1:].strip() for row in patch.splitlines() if row.startswith("+") and not row.startswith("+++")]
+    removed_lines = [row[1:].strip() for row in patch.splitlines() if row.startswith("-") and not row.startswith("---")]
+    hints: list[str] = []
+
+    if any("return " in row for row in added_lines):
+        hints.append("returned data or response behavior changed")
+    if any("raise " in row or "HTTPException" in row for row in added_lines + removed_lines):
+        hints.append("error handling or request rejection behavior changed")
+    if any("token" in row.lower() or "password" in row.lower() or "secret" in row.lower() for row in added_lines):
+        hints.append("sensitive data handling may be affected")
+    if any("select " in row.lower() or "execute(" in row.lower() for row in added_lines):
+        hints.append("database access logic changed")
+    if any("test" in row.lower() or "assert " in row for row in added_lines):
+        hints.append("test coverage changed")
+
+    return "; ".join(_unique(hints))
+
+
 def _rule_judge_findings(findings: list[Finding]) -> list[Finding]:
     seen: set[tuple[str, Optional[int], str]] = set()
     accepted: list[Finding] = []
@@ -529,6 +618,17 @@ def _string_list(value) -> list[str]:
     if not isinstance(value, list):
         return []
     return [str(item) for item in value if str(item).strip()]
+
+
+def _unique(items: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for item in items:
+        if item in seen:
+            continue
+        seen.add(item)
+        result.append(item)
+    return result
 
 
 def _estimate_cost(input_tokens: int, output_tokens: int) -> float:
