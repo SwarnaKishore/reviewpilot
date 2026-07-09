@@ -4,7 +4,7 @@ import re
 
 import httpx
 
-from app.core.config import settings
+from app.core.github_auth import github_auth_headers
 from app.models.schemas import Finding, PullRequestContext, PullRequestFile, ReviewResult
 
 
@@ -21,19 +21,14 @@ def parse_pr_url(pr_url: str) -> tuple[str, str, int]:
 
 async def fetch_pull_request(pr_url: str) -> PullRequestContext:
     owner, repo, number = parse_pr_url(pr_url)
-    headers = {
-        "Accept": "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-    }
-    if settings.github_token:
-        headers["Authorization"] = f"Bearer {settings.github_token}"
+    headers = await github_auth_headers()
 
     base = f"https://api.github.com/repos/{owner}/{repo}/pulls/{number}"
     async with httpx.AsyncClient(headers=headers, timeout=30) as client:
         pr_response = await client.get(base)
-        pr_response.raise_for_status()
+        _raise_for_github_error(pr_response)
         files_response = await client.get(f"{base}/files", params={"per_page": 100})
-        files_response.raise_for_status()
+        _raise_for_github_error(files_response)
 
     pr = pr_response.json()
     files = [
@@ -60,17 +55,13 @@ async def fetch_pull_request(pr_url: str) -> PullRequestContext:
 
 
 async def post_review_summary(review: ReviewResult) -> str:
-    if not settings.github_token:
-        raise ValueError("GITHUB_TOKEN is required to post a GitHub comment")
     if review.pr.html_url == "#" or review.pr.owner == "playground":
         raise ValueError("GitHub summary posting is only available for GitHub pull request reviews")
 
     comments_url = f"https://api.github.com/repos/{review.pr.owner}/{review.pr.repo}/issues/{review.pr.number}/comments"
-    headers = {
-        "Accept": "application/vnd.github+json",
-        "Authorization": f"Bearer {settings.github_token}",
-        "X-GitHub-Api-Version": "2022-11-28",
-    }
+    headers = await github_auth_headers()
+    if "Authorization" not in headers:
+        raise ValueError("GITHUB_TOKEN or GitHub App credentials are required to post a GitHub comment")
     body = _summary_markdown(review)
     async with httpx.AsyncClient(headers=headers, timeout=30) as client:
         existing_comment = await _find_existing_summary_comment(client, comments_url, review)
@@ -78,7 +69,7 @@ async def post_review_summary(review: ReviewResult) -> str:
             response = await client.patch(existing_comment["url"], json={"body": body})
         else:
             response = await client.post(comments_url, json={"body": body})
-        response.raise_for_status()
+        _raise_for_github_error(response)
     return response.json().get("html_url", review.pr.html_url)
 
 
@@ -118,7 +109,7 @@ async def _find_existing_summary_comment(client: httpx.AsyncClient, comments_url
     page = 1
     while True:
         response = await client.get(comments_url, params={"per_page": 100, "page": page})
-        response.raise_for_status()
+        _raise_for_github_error(response)
         comments = response.json()
         for comment in comments:
             if marker in comment.get("body", ""):
@@ -136,6 +127,22 @@ def _finding_location(finding: Finding) -> str:
     if finding.line is None:
         return finding.file
     return f"{finding.file}:{finding.line}"
+
+
+def _raise_for_github_error(response: httpx.Response) -> None:
+    if response.status_code < 400:
+        return
+    try:
+        payload = response.json()
+        message = payload.get("message", response.text)
+        documentation_url = payload.get("documentation_url")
+    except ValueError:
+        message = response.text
+        documentation_url = None
+    detail = f"GitHub API {response.status_code}: {message}"
+    if documentation_url:
+        detail = f"{detail} ({documentation_url})"
+    raise ValueError(detail)
 
 
 def _is_generated_or_noisy(filename: str) -> bool:

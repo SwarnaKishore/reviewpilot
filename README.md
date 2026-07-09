@@ -82,6 +82,32 @@ DATABASE_URL=sqlite:///./reviewpilot.db
 
 Saved reviews, findings, and feedback survive backend restarts. The database file is ignored by git.
 
+## GitHub Auth
+
+For local development, ReviewPilot can use a personal access token:
+
+```env
+GITHUB_TOKEN=your_token_here
+```
+
+For bot-style comments that appear as a GitHub App, configure an app installation instead:
+
+```env
+GITHUB_APP_ID=
+GITHUB_APP_PRIVATE_KEY_PATH=
+GITHUB_APP_INSTALLATION_ID=
+```
+
+You can also use `GITHUB_APP_PRIVATE_KEY` with escaped newlines instead of a file path.
+
+Recommended GitHub App repository permissions:
+
+- Contents: read-only
+- Pull requests: read-only
+- Issues: read and write
+
+ReviewPilot prefers GitHub App installation auth when all app settings are present, and falls back to `GITHUB_TOKEN` otherwise.
+
 ## Environment
 
 `GITHUB_TOKEN` is optional for public PRs, but recommended for higher rate limits and private repos.

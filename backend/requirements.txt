@@ -5,3 +5,4 @@ pydantic-settings==2.7.1
 python-dotenv==1.0.1
 langgraph==0.2.60
 sqlalchemy==2.0.36
+PyJWT[crypto]==2.10.1

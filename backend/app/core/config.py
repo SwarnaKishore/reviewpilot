@@ -7,6 +7,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     github_token: Optional[str] = None
+    github_app_id: Optional[str] = None
+    github_app_private_key: Optional[str] = None
+    github_app_private_key_path: Optional[str] = None
+    github_app_installation_id: Optional[str] = None
     anthropic_api_key: Optional[str] = None
     openai_api_key: Optional[str] = None
     qwen_api_key: Optional[str] = None
