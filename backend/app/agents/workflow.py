@@ -5,7 +5,7 @@ import uuid
 from typing import TypedDict
 
 from app.agents.providers import get_provider
-from app.models.schemas import AgentRun, Finding, PullRequestContext, ReviewResult
+from app.models.schemas import AgentRun, ChangeSummary, Finding, PullRequestContext, ReviewResult
 from langgraph.graph import END, START, StateGraph
 
 
@@ -15,6 +15,8 @@ SPECIALIST_AGENTS = ["security", "performance", "architecture", "testing"]
 class ReviewState(TypedDict):
     pr: PullRequestContext
     selected_agents: list[str]
+    change_summary: ChangeSummary
+    summary_estimated_cost_usd: float
     agent_runs: list[AgentRun]
     final_findings: list[Finding]
     judge_estimated_cost_usd: float
@@ -28,6 +30,8 @@ async def run_review(pr: PullRequestContext, agents: list[str]) -> ReviewResult:
         {
             "pr": pr,
             "selected_agents": [agent for agent in agents if agent in SPECIALIST_AGENTS],
+            "change_summary": ChangeSummary(overview="", changed_areas=[], behavior_changes=[], review_focus=[]),
+            "summary_estimated_cost_usd": 0,
             "agent_runs": [],
             "final_findings": [],
             "judge_estimated_cost_usd": 0,
@@ -42,11 +46,14 @@ async def run_review(pr: PullRequestContext, agents: list[str]) -> ReviewResult:
         risk_level=risk_level,
         recommendation="request_changes" if risk_level == "high" else "comment" if final_findings else "approve",
         summary=f"ReviewPilot analyzed {len(pr.files)} changed files with {len(agent_runs)} specialist agents.",
+        change_summary=state["change_summary"],
         agent_runs=agent_runs,
         final_findings=final_findings,
         latency_ms=int((time.perf_counter() - started) * 1000),
         estimated_cost_usd=round(
-            sum(run.estimated_cost_usd for run in agent_runs) + state["judge_estimated_cost_usd"],
+            sum(run.estimated_cost_usd for run in agent_runs)
+            + state["summary_estimated_cost_usd"]
+            + state["judge_estimated_cost_usd"],
             4,
         ),
     )
@@ -55,16 +62,30 @@ async def run_review(pr: PullRequestContext, agents: list[str]) -> ReviewResult:
 def _build_review_graph(provider):
     graph = StateGraph(ReviewState)
 
+    graph.add_node("summary", _summary_node(provider))
     for agent in SPECIALIST_AGENTS:
         graph.add_node(agent, _agent_node(provider, agent))
     graph.add_node("judge", _judge_node(provider))
 
-    graph.add_edge(START, SPECIALIST_AGENTS[0])
+    graph.add_edge(START, "summary")
+    graph.add_edge("summary", SPECIALIST_AGENTS[0])
     for current_agent, next_agent in zip(SPECIALIST_AGENTS, SPECIALIST_AGENTS[1:]):
         graph.add_edge(current_agent, next_agent)
     graph.add_edge(SPECIALIST_AGENTS[-1], "judge")
     graph.add_edge("judge", END)
     return graph.compile()
+
+
+def _summary_node(provider):
+    async def node(state: ReviewState) -> ReviewState:
+        change_summary, meta = await provider.summarize(state["pr"])
+        return {
+            **state,
+            "change_summary": change_summary,
+            "summary_estimated_cost_usd": meta["estimated_cost_usd"],
+        }
+
+    return node
 
 
 def _agent_node(provider, agent: str):

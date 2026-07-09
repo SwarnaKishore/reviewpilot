@@ -49,6 +49,13 @@ class Finding(BaseModel):
     status: str = "unreviewed"
 
 
+class ChangeSummary(BaseModel):
+    overview: str
+    changed_areas: list[str] = Field(default_factory=list)
+    behavior_changes: list[str] = Field(default_factory=list)
+    review_focus: list[str] = Field(default_factory=list)
+
+
 class AgentRun(BaseModel):
     agent: str
     model: str
@@ -65,6 +72,9 @@ class ReviewResult(BaseModel):
     risk_level: str
     recommendation: str
     summary: str
+    change_summary: ChangeSummary = Field(
+        default_factory=lambda: ChangeSummary(overview="", changed_areas=[], behavior_changes=[], review_focus=[])
+    )
     agent_runs: list[AgentRun]
     final_findings: list[Finding]
     latency_ms: int

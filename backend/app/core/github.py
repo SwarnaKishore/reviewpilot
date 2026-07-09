@@ -83,9 +83,20 @@ def _summary_markdown(review: ReviewResult) -> str:
         f"**Cost:** ${review.estimated_cost_usd:.4f}",
         f"**Latency:** {review.latency_ms}ms",
         "",
-        "### Findings",
+        "### Change Summary",
+        "",
+        review.change_summary.overview or "No change summary available.",
         "",
     ]
+    lines.extend(_markdown_list("Changed areas", review.change_summary.changed_areas))
+    lines.extend(_markdown_list("Behavior changes", review.change_summary.behavior_changes))
+    lines.extend(_markdown_list("Reviewer focus", review.change_summary.review_focus))
+    lines.extend(
+        [
+        "### Findings",
+        "",
+        ]
+    )
     if not review.final_findings:
         lines.append("No actionable findings were reported.")
         return "\n".join(lines)
@@ -102,6 +113,15 @@ def _summary_markdown(review: ReviewResult) -> str:
             ]
         )
     return "\n".join(lines).strip()
+
+
+def _markdown_list(title: str, items: list[str]) -> list[str]:
+    if not items:
+        return []
+    lines = [f"**{title}:**", ""]
+    lines.extend([f"- {item}" for item in items])
+    lines.append("")
+    return lines
 
 
 async def _find_existing_summary_comment(client: httpx.AsyncClient, comments_url: str, review: ReviewResult) -> dict | None:

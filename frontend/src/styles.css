@@ -190,6 +190,11 @@ textarea {
   color: #173d32;
 }
 
+.agent:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
 .primary {
   background: #183f35;
   border: 0;
@@ -415,6 +420,47 @@ textarea {
   margin: 4px 0;
 }
 
+.change-summary {
+  border-bottom: 1px solid #d9d4c6;
+  padding: 20px 0;
+}
+
+.summary-overview {
+  color: #3d4842;
+  line-height: 1.55;
+  margin-bottom: 16px;
+  max-width: 980px;
+}
+
+.summary-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.summary-list {
+  background: #fbfaf6;
+  border: 1px solid #d9d4c6;
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.summary-list h4 {
+  font-size: 14px;
+  margin: 0 0 8px;
+}
+
+.summary-list ul {
+  color: #4d5752;
+  line-height: 1.45;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.summary-list li + li {
+  margin-top: 6px;
+}
+
 .evaluation {
   border-bottom: 1px solid #d9d4c6;
   border-top: 1px solid #d9d4c6;
@@ -597,6 +643,7 @@ textarea {
   }
 
   .run-strip,
+  .summary-grid,
   .eval-grid {
     grid-template-columns: 1fr 1fr;
   }
@@ -618,6 +665,7 @@ textarea {
 
   .agent-grid,
   .eval-grid,
+  .summary-grid,
   .run-strip,
   .field-row {
     grid-template-columns: 1fr;

@@ -8,7 +8,7 @@ from typing import Optional
 import httpx
 
 from app.core.config import settings
-from app.models.schemas import Finding, PullRequestContext
+from app.models.schemas import ChangeSummary, Finding, PullRequestContext
 
 
 ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages"
@@ -21,6 +21,10 @@ class ModelProvider(ABC):
     name: str
 
     @abstractmethod
+    async def summarize(self, pr: PullRequestContext) -> tuple[ChangeSummary, dict]:
+        raise NotImplementedError
+
+    @abstractmethod
     async def review(self, agent: str, pr: PullRequestContext) -> tuple[list[Finding], dict]:
         raise NotImplementedError
 
@@ -31,6 +35,23 @@ class ModelProvider(ABC):
 
 class MockProvider(ModelProvider):
     name = "mock-reviewer"
+
+    async def summarize(self, pr: PullRequestContext) -> tuple[ChangeSummary, dict]:
+        started = time.perf_counter()
+        changed_files = [item.filename for item in pr.files]
+        summary = ChangeSummary(
+            overview=f"This review covers {len(pr.files)} changed file{'s' if len(pr.files) != 1 else ''}.",
+            changed_areas=[f"{item.filename} ({item.status}, +{item.additions}/-{item.deletions})" for item in pr.files],
+            behavior_changes=["Review the diff to confirm whether behavior, permissions, or data exposure changed."],
+            review_focus=changed_files[:4] or ["No changed files available."],
+        )
+        return summary, {
+            "latency_ms": int((time.perf_counter() - started) * 1000),
+            "input_tokens": sum(len((item.patch or "")) // 4 for item in pr.files),
+            "output_tokens": 120,
+            "estimated_cost_usd": 0,
+            "model": self.name,
+        }
 
     async def review(self, agent: str, pr: PullRequestContext) -> tuple[list[Finding], dict]:
         started = time.perf_counter()
@@ -101,6 +122,45 @@ class MockProvider(ModelProvider):
 
 class ClaudeProvider(ModelProvider):
     name = settings.ai_model
+
+    async def summarize(self, pr: PullRequestContext) -> tuple[ChangeSummary, dict]:
+        if not settings.anthropic_api_key:
+            return await MockProvider().summarize(pr)
+
+        started = time.perf_counter()
+        async with httpx.AsyncClient(timeout=60) as client:
+            response = await client.post(
+                ANTHROPIC_MESSAGES_URL,
+                headers={
+                    "anthropic-version": ANTHROPIC_VERSION,
+                    "content-type": "application/json",
+                    "x-api-key": settings.anthropic_api_key,
+                },
+                json={
+                    "model": settings.ai_model,
+                    "max_tokens": 1400,
+                    "temperature": 0,
+                    "system": (
+                        "You are ReviewPilot's change summary agent. Explain what changed in plain English "
+                        "for a reviewer who has not read the code yet. Return valid JSON only."
+                    ),
+                    "messages": [{"role": "user", "content": _build_summary_prompt(pr)}],
+                },
+            )
+            response.raise_for_status()
+
+        payload = response.json()
+        usage = payload.get("usage", {})
+        input_tokens = int(usage.get("input_tokens", 0))
+        output_tokens = int(usage.get("output_tokens", 0))
+        latency_ms = int((time.perf_counter() - started) * 1000)
+        return _parse_change_summary(_content_text(payload), pr), {
+            "latency_ms": latency_ms,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "estimated_cost_usd": _estimate_cost(input_tokens, output_tokens),
+            "model": settings.ai_model,
+        }
 
     async def review(self, agent: str, pr: PullRequestContext) -> tuple[list[Finding], dict]:
         if not settings.anthropic_api_key:
@@ -201,6 +261,32 @@ def _system_prompt(agent: str) -> str:
         "Report only actionable findings with concrete evidence from the diff. "
         "Do not comment on style or speculate. Return valid JSON only."
     )
+
+
+def _build_summary_prompt(pr: PullRequestContext) -> str:
+    return f"""
+Summarize this pull request for a reviewer before they inspect findings.
+
+PR:
+- repo: {pr.owner}/{pr.repo}
+- number: {pr.number}
+- title: {pr.title}
+- author: {pr.author or "unknown"}
+- body: {_trim(pr.body or "No description", 1600)}
+
+Changed files and patches:
+{_patch_context(pr)}
+
+Return JSON with this exact shape:
+{{
+  "overview": "one short paragraph explaining the change",
+  "changed_areas": ["file/module changed and what changed there"],
+  "behavior_changes": ["user-visible or system behavior changes"],
+  "review_focus": ["what a reviewer should inspect closely"]
+}}
+
+Use plain English. Do not include generic advice.
+""".strip()
 
 
 def _build_review_prompt(agent: str, pr: PullRequestContext) -> str:
@@ -320,6 +406,28 @@ def _content_text(payload: dict) -> str:
     return "\n".join(chunks).strip()
 
 
+def _parse_change_summary(output_text: str, pr: PullRequestContext) -> ChangeSummary:
+    try:
+        data = json.loads(output_text)
+    except json.JSONDecodeError:
+        try:
+            data = json.loads(_extract_json_object(output_text))
+        except json.JSONDecodeError:
+            return ChangeSummary(
+                overview=f"This review covers {len(pr.files)} changed files.",
+                changed_areas=[item.filename for item in pr.files],
+                behavior_changes=[],
+                review_focus=[item.filename for item in pr.files[:4]],
+            )
+
+    return ChangeSummary(
+        overview=str(data.get("overview") or f"This review covers {len(pr.files)} changed files."),
+        changed_areas=_string_list(data.get("changed_areas")),
+        behavior_changes=_string_list(data.get("behavior_changes")),
+        review_focus=_string_list(data.get("review_focus")),
+    )
+
+
 def _parse_findings(agent: str, output_text: str, pr: PullRequestContext) -> list[Finding]:
     try:
         data = json.loads(output_text)
@@ -415,6 +523,12 @@ def _optional_int(value) -> Optional[int]:
         return int(value) if value is not None else None
     except (TypeError, ValueError):
         return None
+
+
+def _string_list(value) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value if str(item).strip()]
 
 
 def _estimate_cost(input_tokens: int, output_tokens: int) -> float:

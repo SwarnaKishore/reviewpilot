@@ -5,6 +5,7 @@ import {
   BarChart3,
   CheckCircle2,
   Clock,
+  FileText,
   Gauge,
   GitPullRequest,
   ShieldCheck,
@@ -43,6 +44,12 @@ type ReviewResult = {
   risk_level: string;
   recommendation: string;
   summary: string;
+  change_summary: {
+    overview: string;
+    changed_areas: string[];
+    behavior_changes: string[];
+    review_focus: string[];
+  };
   final_findings: Finding[];
   latency_ms: number;
   estimated_cost_usd: number;
@@ -89,6 +96,7 @@ type LanguageOption = {
 };
 
 const agents = [
+  { id: "summary", label: "Summary", icon: FileText, locked: true },
   { id: "security", label: "Security", icon: ShieldCheck },
   { id: "performance", label: "Performance", icon: Zap },
   { id: "architecture", label: "Architecture", icon: Waypoints },
@@ -263,10 +271,11 @@ function App() {
     setPostedCommentUrl("");
     try {
       const endpoint = mode === "pr" ? "/api/reviews" : "/api/playground/reviews";
+      const reviewAgents = selectedAgents.filter((agent) => agent !== "summary");
       const payload =
         mode === "pr"
-          ? { pr_url: prUrl, agents: selectedAgents }
-          : { language, filename, code, agents: selectedAgents };
+          ? { pr_url: prUrl, agents: reviewAgents }
+          : { language, filename, code, agents: reviewAgents };
       const response = await fetch(`http://127.0.0.1:8000${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -421,13 +430,17 @@ function App() {
                 <button
                   className={active ? "agent active" : "agent"}
                   key={agent.id}
-                  onClick={() =>
+                  disabled={agent.locked}
+                  onClick={() => {
+                    if (agent.locked) {
+                      return;
+                    }
                     setSelectedAgents((current) =>
                       current.includes(agent.id) ? current.filter((id) => id !== agent.id) : [...current, agent.id],
-                    )
-                  }
+                    );
+                  }}
                   type="button"
-                  title={`${agent.label} agent`}
+                  title={agent.locked ? "Summary agent runs before every review" : `${agent.label} agent`}
                 >
                   <Icon size={17} />
                   {agent.label}
@@ -438,7 +451,11 @@ function App() {
           <button
             className="primary"
             onClick={runReview}
-            disabled={loading || selectedAgents.length === 0 || (mode === "pr" ? !prUrl : !code.trim())}
+            disabled={
+              loading ||
+              selectedAgents.length === 0 ||
+              (mode === "pr" ? !prUrl : !code.trim())
+            }
           >
             {loading ? "Reviewing..." : "Run Review"}
           </button>
@@ -506,6 +523,8 @@ function App() {
               </div>
             ) : null}
 
+            <ChangeSummaryPanel review={review} />
+
             <div className="run-strip">
               {review.agent_runs.map((run) => (
                 <div className="run" key={run.agent}>
@@ -553,6 +572,46 @@ function App() {
         )}
       </section>
     </main>
+  );
+}
+
+function ChangeSummaryPanel({ review }: { review: ReviewResult }) {
+  const summary = review.change_summary;
+  if (!summary?.overview && !summary?.changed_areas?.length && !summary?.behavior_changes?.length && !summary?.review_focus?.length) {
+    return null;
+  }
+
+  return (
+    <section className="change-summary">
+      <div className="section-heading">
+        <div>
+          <p className="eyebrow">Summary</p>
+          <h3>What changed</h3>
+        </div>
+      </div>
+      {summary.overview ? <p className="summary-overview">{summary.overview}</p> : null}
+      <div className="summary-grid">
+        <SummaryList title="Changed Areas" items={summary.changed_areas} />
+        <SummaryList title="Behavior Changes" items={summary.behavior_changes} />
+        <SummaryList title="Reviewer Focus" items={summary.review_focus} />
+      </div>
+    </section>
+  );
+}
+
+function SummaryList({ title, items }: { title: string; items: string[] }) {
+  if (!items.length) {
+    return null;
+  }
+  return (
+    <div className="summary-list">
+      <h4>{title}</h4>
+      <ul>
+        {items.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
