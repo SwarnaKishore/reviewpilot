@@ -3,8 +3,12 @@ import { createRoot } from "react-dom/client";
 import {
   Activity,
   BarChart3,
+  Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Clock,
+  EyeOff,
   FileText,
   Gauge,
   GitPullRequest,
@@ -12,6 +16,7 @@ import {
   Target,
   TestTube2,
   Waypoints,
+  X,
   XCircle,
   Zap,
 } from "lucide-react";
@@ -247,10 +252,17 @@ function App() {
   const [postedCommentUrl, setPostedCommentUrl] = React.useState("");
   const [pendingDelete, setPendingDelete] = React.useState<PendingDelete | null>(null);
   const [error, setError] = React.useState("");
+  const [severityFilter, setSeverityFilter] = React.useState("all");
+  const [evaluationOpen, setEvaluationOpen] = React.useState(true);
 
   React.useEffect(() => {
     loadHistory();
   }, []);
+
+  React.useEffect(() => {
+    setSeverityFilter("all");
+    setEvaluationOpen(true);
+  }, [review?.id]);
 
   React.useEffect(() => {
     if (mode === "playground" && !code.trim()) {
@@ -580,7 +592,7 @@ function App() {
             {history.map((item) => (
               <div className={review?.id === item.id ? "history-item active" : "history-item"} key={item.id}>
                 <button className="history-open" onClick={() => openReview(item.id)} type="button">
-                  <span className={`history-risk ${item.risk_level}`}>{item.risk_level}</span>
+                  <span className={`history-risk ${item.risk_level}`} title={`${item.risk_level} risk`} />
                   <strong>{item.title}</strong>
                   <small>
                     {item.owner}/{item.repo} #{item.number} · {formatDate(item.created_at)}
@@ -606,10 +618,13 @@ function App() {
         {review ? (
           <>
             <header className="review-header">
-              <div>
-                <p className="eyebrow">{review.pr.owner}/{review.pr.repo} #{review.pr.number}</p>
-                <h2>{review.pr.title}</h2>
-                <p>{review.summary}</p>
+              <div className="review-header-main">
+                <RiskGauge level={review.risk_level} />
+                <div>
+                  <p className="eyebrow">{review.pr.owner}/{review.pr.repo} #{review.pr.number}</p>
+                  <h2>{review.pr.title}</h2>
+                  <p>{review.summary}</p>
+                </div>
               </div>
               {review.pr.html_url !== "#" ? (
                 <div className="review-actions">
@@ -648,7 +663,13 @@ function App() {
               </div>
             ) : null}
 
-            {review.agent_runs.length > 0 ? <EvaluationDashboard review={review} /> : null}
+            {review.agent_runs.length > 0 ? (
+              <EvaluationDashboard
+                review={review}
+                open={evaluationOpen}
+                onToggle={() => setEvaluationOpen((current) => !current)}
+              />
+            ) : null}
 
             <section className="findings">
               {review.final_findings.length === 0 ? (
@@ -657,30 +678,66 @@ function App() {
                   <p>{review.agent_runs.length === 0 ? "Summary-only mode skipped specialist agents and the Judge." : "No actionable findings were reported."}</p>
                 </div>
               ) : (
-                review.final_findings.map((finding) => (
-                  <article className="finding" key={finding.id}>
-                    <div className="finding-top">
-                      <span className={`severity ${finding.severity}`}>{finding.severity}</span>
-                      <span>{finding.agent}</span>
-                      <code>{finding.file}{finding.line ? `:${finding.line}` : ""}</code>
-                    </div>
-                    <h3>{finding.title}</h3>
-                    <p>{finding.evidence}</p>
-                    <p className="recommendation">{finding.recommendation}</p>
-                    <div className="feedback">
-                      {["accepted", "rejected", "ignored"].map((status) => (
+                <>
+                  <div className="filter-chips" role="tablist" aria-label="Filter findings by severity">
+                    {["all", "high", "medium", "low"].map((level) => {
+                      const count = level === "all"
+                        ? review.final_findings.length
+                        : review.final_findings.filter((finding) => finding.severity === level).length;
+                      return (
                         <button
-                          className={finding.status === status ? "selected" : ""}
-                          key={status}
-                          onClick={() => markFinding(finding.id, status)}
+                          className={`chip ${level}${severityFilter === level ? " active" : ""}`}
+                          key={level}
+                          onClick={() => setSeverityFilter(level)}
                           type="button"
                         >
-                          {status}
+                          {level} · {count}
                         </button>
-                      ))}
+                      );
+                    })}
+                  </div>
+                  {review.final_findings.filter(
+                    (finding) => severityFilter === "all" || finding.severity === severityFilter,
+                  ).length === 0 ? (
+                    <div className="empty-findings">
+                      <h3>No {severityFilter} findings</h3>
+                      <p>Choose a different severity filter to see the rest of the findings.</p>
                     </div>
-                  </article>
-                ))
+                  ) : null}
+                  {review.final_findings
+                    .filter((finding) => severityFilter === "all" || finding.severity === severityFilter)
+                    .map((finding) => (
+                      <article className={`finding ${finding.severity}`} key={finding.id}>
+                        <div className="finding-top">
+                          <span className={`severity ${finding.severity}`}>{finding.severity}</span>
+                          <span>{finding.agent}</span>
+                          <code>{finding.file}{finding.line ? `:${finding.line}` : ""}</code>
+                        </div>
+                        <h3>{finding.title}</h3>
+                        <p>{finding.evidence}</p>
+                        <p className="recommendation">{finding.recommendation}</p>
+                        <div className="feedback">
+                          {[
+                            { status: "accepted", icon: Check, label: "Accept finding" },
+                            { status: "rejected", icon: X, label: "Reject finding" },
+                            { status: "ignored", icon: EyeOff, label: "Ignore finding" },
+                          ].map(({ status, icon: Icon, label }) => (
+                            <button
+                              aria-label={label}
+                              aria-pressed={finding.status === status}
+                              className={finding.status === status ? "selected" : ""}
+                              key={status}
+                              onClick={() => markFinding(finding.id, status)}
+                              title={label}
+                              type="button"
+                            >
+                              <Icon size={15} />
+                            </button>
+                          ))}
+                        </div>
+                      </article>
+                    ))}
+                </>
               )}
             </section>
           </>
@@ -764,7 +821,15 @@ function SummaryList({ title, items }: { title: string; items: string[] }) {
   );
 }
 
-function EvaluationDashboard({ review }: { review: ReviewResult }) {
+function EvaluationDashboard({
+  review,
+  open,
+  onToggle,
+}: {
+  review: ReviewResult;
+  open: boolean;
+  onToggle: () => void;
+}) {
   const summary = React.useMemo(() => computeEvaluation(review), [review]);
 
   return (
@@ -774,36 +839,43 @@ function EvaluationDashboard({ review }: { review: ReviewResult }) {
           <p className="eyebrow">Evaluation</p>
           <h3>Review quality dashboard</h3>
         </div>
-        <span>{summary.reviewed} of {summary.total} findings scored</span>
+        <button aria-expanded={open} className="section-toggle" onClick={onToggle} type="button">
+          {summary.reviewed} of {summary.total} scored
+          {open ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+        </button>
       </div>
 
-      <div className="eval-grid">
-        <EvalCard icon={BarChart3} label="Findings" value={`${summary.total}`} detail={`${summary.reviewed} reviewed`} />
-        <EvalCard icon={CheckCircle2} label="Accepted" value={`${summary.accepted}`} detail={`${summary.acceptedRate}% accepted rate`} />
-        <EvalCard icon={XCircle} label="Rejected" value={`${summary.rejected}`} detail={`${summary.falsePositiveRate}% false positive`} />
-        <EvalCard icon={Target} label="Cost / accepted" value={`$${summary.costPerAccepted.toFixed(4)}`} detail={`$${review.estimated_cost_usd.toFixed(4)} total`} />
-      </div>
-
-      <div className="agent-table">
-        <div className="agent-row header">
-          <span>Agent</span>
-          <span>Findings</span>
-          <span>Accepted</span>
-          <span>Rejected</span>
-          <span>Ignored</span>
-          <span>Acceptance</span>
-        </div>
-        {summary.agentMetrics.map((agent) => (
-          <div className="agent-row" key={agent.agent}>
-            <strong>{agent.agent}</strong>
-            <span>{agent.findings}</span>
-            <span>{agent.accepted}</span>
-            <span>{agent.rejected}</span>
-            <span>{agent.ignored}</span>
-            <span>{agent.acceptanceRate}%</span>
+      {open ? (
+        <>
+          <div className="eval-grid">
+            <EvalCard icon={BarChart3} label="Findings" value={`${summary.total}`} detail={`${summary.reviewed} reviewed`} />
+            <EvalCard icon={CheckCircle2} label="Accepted" value={`${summary.accepted}`} detail={`${summary.acceptedRate}% accepted rate`} />
+            <EvalCard icon={XCircle} label="Rejected" value={`${summary.rejected}`} detail={`${summary.falsePositiveRate}% false positive`} />
+            <EvalCard icon={Target} label="Cost / accepted" value={`$${summary.costPerAccepted.toFixed(4)}`} detail={`$${review.estimated_cost_usd.toFixed(4)} total`} />
           </div>
-        ))}
-      </div>
+
+          <div className="agent-table">
+            <div className="agent-row header">
+              <span>Agent</span>
+              <span>Findings</span>
+              <span>Accepted</span>
+              <span>Rejected</span>
+              <span>Ignored</span>
+              <span>Acceptance</span>
+            </div>
+            {summary.agentMetrics.map((agent) => (
+              <div className="agent-row" key={agent.agent}>
+                <strong>{agent.agent}</strong>
+                <span>{agent.findings}</span>
+                <span>{agent.accepted}</span>
+                <span>{agent.rejected}</span>
+                <span>{agent.ignored}</span>
+                <span>{agent.acceptanceRate}%</span>
+              </div>
+            ))}
+          </div>
+        </>
+      ) : null}
     </section>
   );
 }
@@ -815,6 +887,36 @@ function EvalCard({ icon: Icon, label, value, detail }: { icon: typeof Activity;
       <span>{label}</span>
       <strong>{value}</strong>
       <small>{detail}</small>
+    </div>
+  );
+}
+
+const riskGaugeColors: Record<string, string> = {
+  high: "#ff5a5f",
+  medium: "#ffb020",
+  low: "#3ed598",
+};
+
+const riskGaugeSweep: Record<string, number> = {
+  high: 300,
+  medium: 200,
+  low: 100,
+};
+
+function RiskGauge({ level }: { level: string }) {
+  const color = riskGaugeColors[level] ?? "#647184";
+  const sweep = riskGaugeSweep[level] ?? 60;
+  return (
+    <div className="risk-gauge">
+      <div
+        className="risk-gauge-ring"
+        style={{ background: `conic-gradient(${color} 0deg ${sweep}deg, #1f2c40 ${sweep}deg 360deg)` }}
+      >
+        <div className="risk-gauge-inner">
+          <span style={{ color }}>{level}</span>
+        </div>
+      </div>
+      <span className="risk-gauge-label">Risk</span>
     </div>
   );
 }
