@@ -524,6 +524,7 @@ function ReviewWorkspace({
   onThemeChange: (theme: Theme) => void;
 }) {
   const [mode, setMode] = React.useState<"pr" | "playground">(initialMode);
+  const [page, setPage] = React.useState<"form" | "analysis">("form");
   const [prUrl, setPrUrl] = React.useState("");
   const [language, setLanguage] = React.useState(languageOptions[0].id);
   const [filename, setFilename] = React.useState(languageOptions[0].filename);
@@ -587,6 +588,7 @@ function ReviewWorkspace({
       }
       setHistory([]);
       setReview(null);
+      setPage("form");
       setPostMessage("");
       setPostedCommentUrl("");
     } catch (err) {
@@ -609,6 +611,7 @@ function ReviewWorkspace({
       setHistory((current) => current.filter((historyItem) => historyItem.id !== item.id));
       if (review?.id === item.id) {
         setReview(null);
+        setPage("form");
         setPostMessage("");
         setPostedCommentUrl("");
       }
@@ -652,6 +655,7 @@ function ReviewWorkspace({
         throw new Error(payload.detail || "Review failed");
       }
       setReview(await response.json());
+      setPage("analysis");
       await loadHistory();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Review failed");
@@ -682,6 +686,7 @@ function ReviewWorkspace({
       return;
     }
     setReview(await response.json());
+    setPage("analysis");
   }
 
   async function postSummaryToGitHub() {
@@ -764,98 +769,9 @@ function ReviewWorkspace({
           <ThemeSwitcher theme={theme} onChange={onThemeChange} />
         </div>
 
-        <section className="panel">
-          <div className="tabs" role="tablist" aria-label="Review mode">
-            <button className={mode === "pr" ? "active" : ""} onClick={() => setMode("pr")} type="button">
-              Pull Request
-            </button>
-            <button className={mode === "playground" ? "active" : ""} onClick={() => setMode("playground")} type="button">
-              Playground
-            </button>
-          </div>
-
-          {mode === "pr" ? (
-            <>
-              <label htmlFor="pr-url">GitHub pull request</label>
-              <input
-                id="pr-url"
-                value={prUrl}
-                onChange={(event) => setPrUrl(event.target.value)}
-                placeholder="https://github.com/owner/repo/pull/123"
-              />
-            </>
-          ) : (
-            <div className="playground-form">
-              <div className="field-row">
-                <div>
-                  <label htmlFor="language">Language</label>
-                  <select id="language" value={language} onChange={(event) => changeLanguage(event.target.value)}>
-                    {languageOptions.map((option) => (
-                      <option key={option.id} value={option.id}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label htmlFor="filename">Filename</label>
-                  <input id="filename" value={filename} onChange={(event) => setFilename(event.target.value)} />
-                </div>
-              </div>
-              <div className="code-heading">
-                <label htmlFor="code">Code</label>
-                <button onClick={loadSample} type="button" disabled={language === "other"}>
-                  Load Sample
-                </button>
-              </div>
-              <textarea
-                id="code"
-                value={code}
-                onChange={(event) => setCode(event.target.value)}
-                placeholder={"Paste code to review"}
-                spellCheck={false}
-              />
-            </div>
-          )}
-          <div className="agent-grid">
-            {agents.map((agent) => {
-              const Icon = agent.icon;
-              const active = selectedAgents.includes(agent.id);
-              return (
-                <button
-                  className={active ? "agent active" : "agent"}
-                  key={agent.id}
-                  disabled={agent.locked}
-                  onClick={() => {
-                    if (agent.locked) {
-                      return;
-                    }
-                    setSelectedAgents((current) =>
-                      current.includes(agent.id) ? current.filter((id) => id !== agent.id) : [...current, agent.id],
-                    );
-                  }}
-                  type="button"
-                  title={agent.locked ? "Summary agent runs before every review" : `${agent.label} agent`}
-                >
-                  <Icon size={17} />
-                  {agent.label}
-                </button>
-              );
-            })}
-          </div>
-          <button
-            className="primary"
-            onClick={runReview}
-            disabled={
-              loading ||
-              selectedAgents.length === 0 ||
-              (mode === "pr" ? !prUrl : !code.trim())
-            }
-          >
-            {loading ? "Reviewing..." : "Run Review"}
-          </button>
-          {error ? <p className="error">{error}</p> : null}
-        </section>
+        <button className="primary new-review-button" onClick={() => setPage("form")} type="button" disabled={page === "form"}>
+          + New Review
+        </button>
 
         <section className="panel metrics">
           <Metric icon={Activity} label="Risk" value={review?.risk_level ?? "none"} />
@@ -905,7 +821,116 @@ function ReviewWorkspace({
       </aside>
 
       <section className="workspace">
-        {review ? (
+        <div className="workspace-topbar">
+          <button className="choose-back" onClick={onHome} type="button">
+            &larr; Back to Home
+          </button>
+          {page === "form" && review ? (
+            <button className="workspace-topbar-link" onClick={() => setPage("analysis")} type="button">
+              View last analysis &rarr;
+            </button>
+          ) : null}
+        </div>
+        {page === "form" ? (
+          <div className="form-page">
+            <div className="form-page-heading">
+              <p className="eyebrow">New review</p>
+              <h2>What do you want reviewed?</h2>
+            </div>
+            <section className="form-panel">
+              <div className="tabs" role="tablist" aria-label="Review mode">
+                <button className={mode === "pr" ? "active" : ""} onClick={() => setMode("pr")} type="button">
+                  Pull Request
+                </button>
+                <button className={mode === "playground" ? "active" : ""} onClick={() => setMode("playground")} type="button">
+                  Playground
+                </button>
+              </div>
+
+              {mode === "pr" ? (
+                <>
+                  <label htmlFor="pr-url">GitHub pull request</label>
+                  <input
+                    id="pr-url"
+                    value={prUrl}
+                    onChange={(event) => setPrUrl(event.target.value)}
+                    placeholder="https://github.com/owner/repo/pull/123"
+                  />
+                </>
+              ) : (
+                <div className="playground-form">
+                  <div className="field-row">
+                    <div>
+                      <label htmlFor="language">Language</label>
+                      <select id="language" value={language} onChange={(event) => changeLanguage(event.target.value)}>
+                        {languageOptions.map((option) => (
+                          <option key={option.id} value={option.id}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label htmlFor="filename">Filename</label>
+                      <input id="filename" value={filename} onChange={(event) => setFilename(event.target.value)} />
+                    </div>
+                  </div>
+                  <div className="code-heading">
+                    <label htmlFor="code">Code</label>
+                    <button onClick={loadSample} type="button" disabled={language === "other"}>
+                      Load Sample
+                    </button>
+                  </div>
+                  <textarea
+                    id="code"
+                    value={code}
+                    onChange={(event) => setCode(event.target.value)}
+                    placeholder={"Paste code to review"}
+                    spellCheck={false}
+                  />
+                </div>
+              )}
+              <div className="agent-grid">
+                {agents.map((agent) => {
+                  const Icon = agent.icon;
+                  const active = selectedAgents.includes(agent.id);
+                  return (
+                    <button
+                      className={active ? "agent active" : "agent"}
+                      key={agent.id}
+                      disabled={agent.locked}
+                      onClick={() => {
+                        if (agent.locked) {
+                          return;
+                        }
+                        setSelectedAgents((current) =>
+                          current.includes(agent.id) ? current.filter((id) => id !== agent.id) : [...current, agent.id],
+                        );
+                      }}
+                      type="button"
+                      title={agent.locked ? "Summary agent runs before every review" : `${agent.label} agent`}
+                    >
+                      <Icon size={17} />
+                      {agent.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <button
+                className="primary"
+                onClick={runReview}
+                disabled={
+                  loading ||
+                  selectedAgents.length === 0 ||
+                  (mode === "pr" ? !prUrl : !code.trim())
+                }
+              >
+                {loading ? "Reviewing..." : "Run Review"}
+              </button>
+              {error ? <p className="error">{error}</p> : null}
+            </section>
+          </div>
+        ) : review ? (
           <>
             <header className="review-header">
               <div className="review-header-main">
@@ -1033,8 +1058,11 @@ function ReviewWorkspace({
           </>
         ) : (
           <section className="empty">
-            <h2>Run code through ReviewPilot</h2>
-            <p>Review a public GitHub pull request or use Playground mode for a fast pasted-code demo.</p>
+            <h2>No review loaded</h2>
+            <p>Start a new review or pick a saved one from History.</p>
+            <button className="primary" onClick={() => setPage("form")} type="button">
+              Start a review
+            </button>
           </section>
         )}
       </section>
