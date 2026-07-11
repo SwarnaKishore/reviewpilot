@@ -235,8 +235,211 @@ CREATE INDEX users_email_idx ON users(email);`,
   },
 ];
 
+type View = "landing" | "choose" | "workspace";
+
 function App() {
-  const [mode, setMode] = React.useState<"pr" | "playground">("pr");
+  const [view, setView] = React.useState<View>("landing");
+  const [startMode, setStartMode] = React.useState<"pr" | "playground">("pr");
+
+  if (view === "landing") {
+    return <LandingPage onGetStarted={() => setView("choose")} />;
+  }
+
+  if (view === "choose") {
+    return (
+      <ChooseMode
+        onBack={() => setView("landing")}
+        onSelect={(mode) => {
+          setStartMode(mode);
+          setView("workspace");
+        }}
+      />
+    );
+  }
+
+  return <ReviewWorkspace initialMode={startMode} onHome={() => setView("landing")} />;
+}
+
+const landingFeatures = [
+  {
+    icon: ShieldCheck,
+    title: "Security",
+    description: "Flags injection risk, secret leakage, and unsafe auth patterns as they appear in the diff.",
+  },
+  {
+    icon: Zap,
+    title: "Performance",
+    description: "Catches N+1 queries, blocking calls, and other regressions before they hit production.",
+  },
+  {
+    icon: Waypoints,
+    title: "Architecture",
+    description: "Reviews structure, coupling, and consistency against the rest of the codebase.",
+  },
+  {
+    icon: TestTube2,
+    title: "Testing",
+    description: "Checks coverage gaps and missing edge cases for the behavior a change introduces.",
+  },
+];
+
+const landingSteps = [
+  {
+    step: "01",
+    title: "Point it at a PR or a snippet",
+    description: "Paste a public GitHub pull request URL, or drop a code snippet into Playground mode — no repo access required.",
+  },
+  {
+    step: "02",
+    title: "Specialist agents run in parallel",
+    description: "Security, Performance, Architecture, and Testing agents each inspect the diff independently.",
+  },
+  {
+    step: "03",
+    title: "The Judge cuts the noise",
+    description: "Duplicate and speculative findings are merged or dropped, and severity gets recalibrated against real evidence.",
+  },
+  {
+    step: "04",
+    title: "Review, decide, ship",
+    description: "Accept, reject, or ignore each finding, then post a summary or inline comments straight back to GitHub.",
+  },
+];
+
+function LandingPage({ onGetStarted }: { onGetStarted: () => void }) {
+  return (
+    <main className="landing">
+      <div className="landing-glow" aria-hidden="true" />
+      <header className="landing-nav">
+        <div className="brand">
+          <div className="mark"><GitPullRequest size={20} /></div>
+          <div>
+            <h1>ReviewPilot</h1>
+          </div>
+        </div>
+        <a
+          className="landing-nav-link"
+          href="https://github.com/SwarnaKishore/reviewpilot"
+          target="_blank"
+          rel="noreferrer"
+        >
+          View on GitHub
+        </a>
+      </header>
+
+      <section className="hero">
+        <p className="eyebrow">Multi-agent pull request review</p>
+        <h2>A full review team for every pull request, not just a linter</h2>
+        <p className="hero-lede">
+          ReviewPilot runs Security, Performance, Architecture, and Testing agents over a real GitHub PR or a
+          pasted snippet, then has a Judge agent dedupe the findings and recalibrate severity — so what's left
+          is worth your time.
+        </p>
+        <div className="hero-actions">
+          <button className="primary hero-cta" onClick={onGetStarted} type="button">
+            Get Started
+          </button>
+          <a
+            className="secondary-action hero-secondary"
+            href="https://github.com/SwarnaKishore/reviewpilot"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Read the docs
+          </a>
+        </div>
+      </section>
+
+      <section className="landing-section">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">Agents</p>
+            <h3>Four specialists, one Judge</h3>
+          </div>
+        </div>
+        <div className="feature-grid">
+          {landingFeatures.map(({ icon: Icon, title, description }) => (
+            <div className="feature-card" key={title}>
+              <div className="mark feature-mark"><Icon size={18} /></div>
+              <h4>{title}</h4>
+              <p>{description}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="landing-section">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">How it works</p>
+            <h3>From diff to decision</h3>
+          </div>
+        </div>
+        <div className="steps-grid">
+          {landingSteps.map(({ step, title, description }) => (
+            <div className="step-card" key={step}>
+              <span className="step-number">{step}</span>
+              <h4>{title}</h4>
+              <p>{description}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="landing-cta">
+        <h3>Pick a pull request or paste some code — see what the agents find.</h3>
+        <button className="primary hero-cta" onClick={onGetStarted} type="button">
+          Get Started
+        </button>
+      </section>
+    </main>
+  );
+}
+
+function ChooseMode({
+  onBack,
+  onSelect,
+}: {
+  onBack: () => void;
+  onSelect: (mode: "pr" | "playground") => void;
+}) {
+  return (
+    <main className="choose">
+      <div className="landing-glow" aria-hidden="true" />
+      <button className="choose-back" onClick={onBack} type="button">
+        &larr; Back
+      </button>
+      <div className="choose-heading">
+        <p className="eyebrow">Get started</p>
+        <h2>How do you want to review code?</h2>
+        <p className="hero-lede">Both modes run the same specialist agents and Judge — pick whichever fits what you have.</p>
+      </div>
+      <div className="choose-grid">
+        <button className="choose-card" onClick={() => onSelect("pr")} type="button">
+          <div className="mark feature-mark"><GitPullRequest size={22} /></div>
+          <h4>Review a Pull Request</h4>
+          <p>Paste a public GitHub PR URL. ReviewPilot fetches the diff and reviews it with all four agents.</p>
+          <span className="choose-card-cta">Start with a PR &rarr;</span>
+        </button>
+        <button className="choose-card" onClick={() => onSelect("playground")} type="button">
+          <div className="mark feature-mark"><Zap size={22} /></div>
+          <h4>Try the Playground</h4>
+          <p>Paste any code snippet in any language. No GitHub URL or auth needed — just a fast demo review.</p>
+          <span className="choose-card-cta">Open Playground &rarr;</span>
+        </button>
+      </div>
+    </main>
+  );
+}
+
+function ReviewWorkspace({
+  initialMode,
+  onHome,
+}: {
+  initialMode: "pr" | "playground";
+  onHome: () => void;
+}) {
+  const [mode, setMode] = React.useState<"pr" | "playground">(initialMode);
   const [prUrl, setPrUrl] = React.useState("");
   const [language, setLanguage] = React.useState(languageOptions[0].id);
   const [filename, setFilename] = React.useState(languageOptions[0].filename);
@@ -466,13 +669,13 @@ function App() {
     <>
     <main className="app">
       <aside className="sidebar">
-        <div className="brand">
+        <button className="brand brand-home" onClick={onHome} type="button" title="Back to home">
           <div className="mark"><GitPullRequest size={22} /></div>
           <div>
             <h1>ReviewPilot</h1>
             <p>Multi-agent PR review</p>
           </div>
-        </div>
+        </button>
 
         <section className="panel">
           <div className="tabs" role="tablist" aria-label="Review mode">
@@ -894,7 +1097,7 @@ function EvalCard({ icon: Icon, label, value, detail }: { icon: typeof Activity;
 const riskGaugeColors: Record<string, string> = {
   high: "#ff5a5f",
   medium: "#ffb020",
-  low: "#3ed598",
+  low: "#38d9c9",
 };
 
 const riskGaugeSweep: Record<string, number> = {
@@ -910,7 +1113,7 @@ function RiskGauge({ level }: { level: string }) {
     <div className="risk-gauge">
       <div
         className="risk-gauge-ring"
-        style={{ background: `conic-gradient(${color} 0deg ${sweep}deg, #1f2c40 ${sweep}deg 360deg)` }}
+        style={{ background: `conic-gradient(${color} 0deg ${sweep}deg, #262b4a ${sweep}deg 360deg)` }}
       >
         <div className="risk-gauge-inner">
           <span style={{ color }}>{level}</span>
