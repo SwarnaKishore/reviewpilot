@@ -117,6 +117,48 @@ code {
   background: var(--sidebar-bg);
 }
 
+.new-review-button {
+  margin-bottom: 24px;
+}
+
+.workspace-topbar {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.workspace-topbar-link {
+  background: transparent;
+  border: 0;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 0;
+}
+
+.form-page {
+  margin: 40px auto 0;
+  max-width: 640px;
+}
+
+.form-page-heading {
+  margin-bottom: 24px;
+}
+
+.form-page-heading h2 {
+  font-size: 26px;
+  font-weight: 700;
+  margin: 8px 0 0;
+}
+
+.form-panel {
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  padding: 24px;
+}
+
 .brand {
   align-items: center;
   display: flex;
@@ -272,6 +314,10 @@ textarea {
   gap: 8px;
   grid-template-columns: 1fr 1fr;
   margin: 14px 0;
+}
+
+.form-panel .agent-grid {
+  grid-template-columns: repeat(3, 1fr);
 }
 
 .agent,
@@ -991,6 +1037,12 @@ textarea {
   text-align: center;
 }
 
+.empty .primary {
+  margin-top: 12px;
+  width: auto;
+  padding: 0 24px;
+}
+
 .empty h2 {
   font-size: 28px;
   font-weight: 600;
@@ -1384,6 +1436,10 @@ textarea {
     grid-template-columns: 1fr 1fr;
   }
 
+  .form-panel .agent-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
   .choose-grid {
     grid-template-columns: 1fr;
   }
@@ -1408,6 +1464,7 @@ textarea {
   }
 
   .agent-grid,
+  .form-panel .agent-grid,
   .eval-grid,
   .summary-grid,
   .run-strip,
