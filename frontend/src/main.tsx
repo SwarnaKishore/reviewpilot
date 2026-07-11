@@ -240,14 +240,14 @@ type Theme = "indigo" | "ocean" | "daylight";
 const THEME_STORAGE_KEY = "reviewpilot-theme";
 
 const THEMES: { id: Theme; label: string; swatch: [string, string] }[] = [
+  { id: "daylight", label: "Daylight", swatch: ["#f5f6fb", "#6f5ce6"] },
   { id: "indigo", label: "Indigo", swatch: ["#0d0e1c", "#8b7cf6"] },
   { id: "ocean", label: "Ocean", swatch: ["#06131f", "#38bdf8"] },
-  { id: "daylight", label: "Daylight", swatch: ["#f5f6fb", "#6f5ce6"] },
 ];
 
 function getStoredTheme(): Theme {
   if (typeof window === "undefined") {
-    return "indigo";
+    return "daylight";
   }
   try {
     const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
@@ -257,7 +257,7 @@ function getStoredTheme(): Theme {
   } catch {
     // localStorage unavailable, fall back to default
   }
-  return "indigo";
+  return "daylight";
 }
 
 function ThemeSwitcher({ theme, onChange }: { theme: Theme; onChange: (theme: Theme) => void }) {
