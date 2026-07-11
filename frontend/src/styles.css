@@ -1,4 +1,36 @@
 :root {
+  --bg: #f5f6fb;
+  --sidebar-bg: #ffffff;
+  --panel: #ffffff;
+  --panel-raised: #f0f1f8;
+  --border: #e1e3f0;
+  --border-strong: #c9cce2;
+  --text: #181a2e;
+  --text-secondary: #565973;
+  --text-muted: #82859c;
+  --accent: #6f5ce6;
+  --accent-strong: #5843d6;
+  --accent-tint: rgba(111, 92, 230, 0.12);
+  --accent-contrast: #ffffff;
+  --warning: #b45309;
+  --warning-strong: #92400e;
+  --warning-tint: rgba(180, 83, 9, 0.12);
+  --danger: #dc2626;
+  --danger-strong: #b91c1c;
+  --danger-tint: rgba(220, 38, 38, 0.12);
+  --danger-contrast: #ffffff;
+  --success: #059669;
+  --success-tint: rgba(5, 150, 105, 0.12);
+  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  color: var(--text);
+  background: var(--bg);
+  color-scheme: light;
+  font-family: var(--font-sans);
+}
+
+[data-theme="indigo"] {
+  color-scheme: dark;
   --bg: #0d0e1c;
   --sidebar-bg: #111327;
   --panel: #161933;
@@ -21,12 +53,6 @@
   --danger-contrast: #2b0808;
   --success: #38d9c9;
   --success-tint: rgba(56, 217, 201, 0.14);
-  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
-  color: var(--text);
-  background: var(--bg);
-  color-scheme: dark;
-  font-family: var(--font-sans);
 }
 
 [data-theme="ocean"] {
