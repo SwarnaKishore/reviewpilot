@@ -286,21 +286,26 @@ const landingFeatures = [
 const landingSteps = [
   {
     step: "01",
-    title: "Point it at a PR or a snippet",
-    description: "Paste a public GitHub pull request URL, or drop a code snippet into Playground mode — no repo access required.",
+    title: "Bring your code",
+    description: "Point ReviewPilot at whatever you're working on — a real change or a quick snippet.",
   },
   {
     step: "02",
-    title: "Specialist agents run in parallel",
-    description: "Security, Performance, Architecture, and Testing agents each inspect the diff independently.",
+    title: "Get an instant summary",
+    description: "Before anything else runs, a Summary agent explains what changed and why it matters.",
   },
   {
     step: "03",
+    title: "Specialists dig in",
+    description: "Security, Performance, Architecture, and Testing agents inspect the change in parallel.",
+  },
+  {
+    step: "04",
     title: "The Judge cuts the noise",
     description: "Duplicate and speculative findings are merged or dropped, and severity gets recalibrated against real evidence.",
   },
   {
-    step: "04",
+    step: "05",
     title: "Review, decide, ship",
     description: "Accept, reject, or ignore each finding, then post a summary or inline comments straight back to GitHub.",
   },
@@ -328,12 +333,12 @@ function LandingPage({ onGetStarted }: { onGetStarted: () => void }) {
       </header>
 
       <section className="hero">
-        <p className="eyebrow">Multi-agent pull request review</p>
-        <h2>A full review team for every pull request, not just a linter</h2>
+        <p className="eyebrow">Multi-agent code review</p>
+        <h2>A full review team for your code, not just a linter</h2>
         <p className="hero-lede">
-          ReviewPilot runs Security, Performance, Architecture, and Testing agents over a real GitHub PR or a
-          pasted snippet, then has a Judge agent dedupe the findings and recalibrate severity — so what's left
-          is worth your time.
+          Every review opens with a plain-English summary of what changed, then Security, Performance,
+          Architecture, and Testing agents dig in in parallel. A Judge agent dedupes the findings and
+          recalibrates severity — so what's left is worth your time.
         </p>
         <div className="hero-actions">
           <button className="primary hero-cta" onClick={onGetStarted} type="button">
@@ -387,7 +392,7 @@ function LandingPage({ onGetStarted }: { onGetStarted: () => void }) {
       </section>
 
       <section className="landing-cta">
-        <h3>Pick a pull request or paste some code — see what the agents find.</h3>
+        <h3>Bring your code — see what the agents find.</h3>
         <button className="primary hero-cta" onClick={onGetStarted} type="button">
           Get Started
         </button>

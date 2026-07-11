@@ -39,6 +39,7 @@ button,
 input,
 select,
 textarea {
+  color: inherit;
   font: inherit;
 }
 
@@ -1133,7 +1134,7 @@ textarea {
 .steps-grid {
   display: grid;
   gap: 14px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .step-card {
