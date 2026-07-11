@@ -235,29 +235,86 @@ CREATE INDEX users_email_idx ON users(email);`,
   },
 ];
 
+type Theme = "indigo" | "ocean" | "daylight";
+
+const THEME_STORAGE_KEY = "reviewpilot-theme";
+
+const THEMES: { id: Theme; label: string; swatch: [string, string] }[] = [
+  { id: "indigo", label: "Indigo", swatch: ["#0d0e1c", "#8b7cf6"] },
+  { id: "ocean", label: "Ocean", swatch: ["#06131f", "#38bdf8"] },
+  { id: "daylight", label: "Daylight", swatch: ["#f5f6fb", "#6f5ce6"] },
+];
+
+function getStoredTheme(): Theme {
+  if (typeof window === "undefined") {
+    return "indigo";
+  }
+  try {
+    const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
+    if (stored === "indigo" || stored === "ocean" || stored === "daylight") {
+      return stored;
+    }
+  } catch {
+    // localStorage unavailable, fall back to default
+  }
+  return "indigo";
+}
+
+function ThemeSwitcher({ theme, onChange }: { theme: Theme; onChange: (theme: Theme) => void }) {
+  return (
+    <div className="theme-switcher" role="radiogroup" aria-label="Color theme">
+      {THEMES.map(({ id, label, swatch }) => (
+        <button
+          key={id}
+          className={theme === id ? "theme-dot active" : "theme-dot"}
+          style={{ background: `linear-gradient(135deg, ${swatch[0]} 50%, ${swatch[1]} 50%)` }}
+          onClick={() => onChange(id)}
+          type="button"
+          role="radio"
+          aria-checked={theme === id}
+          title={label}
+        />
+      ))}
+    </div>
+  );
+}
+
 type View = "landing" | "choose" | "workspace";
 
 function App() {
   const [view, setView] = React.useState<View>("landing");
   const [startMode, setStartMode] = React.useState<"pr" | "playground">("pr");
+  const [theme, setTheme] = React.useState<Theme>(getStoredTheme);
 
-  if (view === "landing") {
-    return <LandingPage onGetStarted={() => setView("choose")} />;
-  }
+  React.useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    try {
+      window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+    } catch {
+      // ignore write failures (private browsing, storage disabled, etc.)
+    }
+  }, [theme]);
 
-  if (view === "choose") {
-    return (
-      <ChooseMode
-        onBack={() => setView("landing")}
-        onSelect={(mode) => {
-          setStartMode(mode);
-          setView("workspace");
-        }}
-      />
-    );
-  }
-
-  return <ReviewWorkspace initialMode={startMode} onHome={() => setView("landing")} />;
+  return view === "landing" ? (
+    <LandingPage onGetStarted={() => setView("choose")} theme={theme} onThemeChange={setTheme} />
+  ) : view === "choose" ? (
+    <ChooseMode
+      onBack={() => setView("landing")}
+      onSelect={(mode) => {
+        setStartMode(mode);
+        setView("workspace");
+      }}
+      theme={theme}
+      onThemeChange={setTheme}
+    />
+  ) : (
+    <ReviewWorkspace
+      initialMode={startMode}
+      onHome={() => setView("landing")}
+      theme={theme}
+      onThemeChange={setTheme}
+    />
+  );
 }
 
 const landingFeatures = [
@@ -311,7 +368,15 @@ const landingSteps = [
   },
 ];
 
-function LandingPage({ onGetStarted }: { onGetStarted: () => void }) {
+function LandingPage({
+  onGetStarted,
+  theme,
+  onThemeChange,
+}: {
+  onGetStarted: () => void;
+  theme: Theme;
+  onThemeChange: (theme: Theme) => void;
+}) {
   return (
     <main className="landing">
       <div className="landing-glow" aria-hidden="true" />
@@ -322,14 +387,17 @@ function LandingPage({ onGetStarted }: { onGetStarted: () => void }) {
             <h1>ReviewPilot</h1>
           </div>
         </div>
-        <a
-          className="landing-nav-link"
-          href="https://github.com/SwarnaKishore/reviewpilot"
-          target="_blank"
-          rel="noreferrer"
-        >
-          View on GitHub
-        </a>
+        <div className="landing-nav-right">
+          <ThemeSwitcher theme={theme} onChange={onThemeChange} />
+          <a
+            className="landing-nav-link"
+            href="https://github.com/SwarnaKishore/reviewpilot"
+            target="_blank"
+            rel="noreferrer"
+          >
+            View on GitHub
+          </a>
+        </div>
       </header>
 
       <section className="hero">
@@ -404,16 +472,23 @@ function LandingPage({ onGetStarted }: { onGetStarted: () => void }) {
 function ChooseMode({
   onBack,
   onSelect,
+  theme,
+  onThemeChange,
 }: {
   onBack: () => void;
   onSelect: (mode: "pr" | "playground") => void;
+  theme: Theme;
+  onThemeChange: (theme: Theme) => void;
 }) {
   return (
     <main className="choose">
       <div className="landing-glow" aria-hidden="true" />
-      <button className="choose-back" onClick={onBack} type="button">
-        &larr; Back
-      </button>
+      <div className="choose-top">
+        <button className="choose-back" onClick={onBack} type="button">
+          &larr; Back
+        </button>
+        <ThemeSwitcher theme={theme} onChange={onThemeChange} />
+      </div>
       <div className="choose-heading">
         <p className="eyebrow">Get started</p>
         <h2>How do you want to review code?</h2>
@@ -440,9 +515,13 @@ function ChooseMode({
 function ReviewWorkspace({
   initialMode,
   onHome,
+  theme,
+  onThemeChange,
 }: {
   initialMode: "pr" | "playground";
   onHome: () => void;
+  theme: Theme;
+  onThemeChange: (theme: Theme) => void;
 }) {
   const [mode, setMode] = React.useState<"pr" | "playground">(initialMode);
   const [prUrl, setPrUrl] = React.useState("");
@@ -674,13 +753,16 @@ function ReviewWorkspace({
     <>
     <main className="app">
       <aside className="sidebar">
-        <button className="brand brand-home" onClick={onHome} type="button" title="Back to home">
-          <div className="mark"><GitPullRequest size={22} /></div>
-          <div>
-            <h1>ReviewPilot</h1>
-            <p>Multi-agent PR review</p>
-          </div>
-        </button>
+        <div className="sidebar-top">
+          <button className="brand brand-home" onClick={onHome} type="button" title="Back to home">
+            <div className="mark"><GitPullRequest size={22} /></div>
+            <div>
+              <h1>ReviewPilot</h1>
+              <p>Multi-agent PR review</p>
+            </div>
+          </button>
+          <ThemeSwitcher theme={theme} onChange={onThemeChange} />
+        </div>
 
         <section className="panel">
           <div className="tabs" role="tablist" aria-label="Review mode">
@@ -1100,9 +1182,9 @@ function EvalCard({ icon: Icon, label, value, detail }: { icon: typeof Activity;
 }
 
 const riskGaugeColors: Record<string, string> = {
-  high: "#ff5a5f",
-  medium: "#ffb020",
-  low: "#38d9c9",
+  high: "var(--danger)",
+  medium: "var(--warning)",
+  low: "var(--success)",
 };
 
 const riskGaugeSweep: Record<string, number> = {
@@ -1112,13 +1194,13 @@ const riskGaugeSweep: Record<string, number> = {
 };
 
 function RiskGauge({ level }: { level: string }) {
-  const color = riskGaugeColors[level] ?? "#647184";
+  const color = riskGaugeColors[level] ?? "var(--text-muted)";
   const sweep = riskGaugeSweep[level] ?? 60;
   return (
     <div className="risk-gauge">
       <div
         className="risk-gauge-ring"
-        style={{ background: `conic-gradient(${color} 0deg ${sweep}deg, #262b4a ${sweep}deg 360deg)` }}
+        style={{ background: `conic-gradient(${color} 0deg ${sweep}deg, var(--border) ${sweep}deg 360deg)` }}
       >
         <div className="risk-gauge-inner">
           <span style={{ color }}>{level}</span>
