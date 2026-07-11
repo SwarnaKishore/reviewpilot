@@ -10,6 +10,18 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
       rel="stylesheet"
     />
+    <script>
+      (function () {
+        try {
+          var saved = window.localStorage.getItem("reviewpilot-theme");
+          if (saved === "indigo" || saved === "ocean" || saved === "daylight") {
+            document.documentElement.setAttribute("data-theme", saved);
+          }
+        } catch (e) {
+          // localStorage unavailable, default theme will apply
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
