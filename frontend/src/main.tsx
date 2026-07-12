@@ -405,7 +405,7 @@ function LandingPage({
         <h2>A full review team for your code, not just a linter</h2>
         <p className="hero-lede">
           Every review opens with a plain-English summary of what changed, then Security, Performance,
-          Architecture, and Testing agents dig in in parallel. A Judge agent dedupes the findings and
+          Architecture, and Testing agents dig in parallel. A Judge agent dedupes the findings and
           recalibrates severity — so what's left is worth your time.
         </p>
         <div className="hero-actions">
